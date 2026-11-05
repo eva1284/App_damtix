@@ -143,7 +143,7 @@ tool('list_queue', {
     '',
     '[영상 편집하기/고치기] video.story를 따른다. 컷에 fromImage(이미지 작업 번호)가 있으면 그 작업의 최종 이미지로 그 컷을 만든다(get_work). Higgsfield 영상 생성은 예상 크레딧을 먼저 알리고 확인을 받는다. 편집은 CapCut 연결이 있으면 그것으로 한다. 자막은 넣지 않는다(프로그램이 나라별로 입힌다). 완성 영상은 submit_video로 보낸다. 고치기는 latestFix.notes(초 단위 시간과 메모)를 반영하고, 필요한 장면만 view_video_frames로 확인한다.',
     '',
-    '[자막 쓰기/고치기] languages의 모든 언어를 한 번에 submit_subtitles로 보낸다. 각 언어로 자연스럽게 쓰고, 줄마다 원문만 보고 옮긴 한국어 역번역(back)을 붙인다. 시간은 cuts와 duration에 맞춘다. 한 줄은 짧게(영어 기준 40자 이내). 영상을 다시 볼 필요는 없다.'
+    '[자막 쓰기/고치기] languages의 모든 언어를 한 번에 submit_subtitles로 보낸다. 각 언어로 자연스럽게 쓰고, 줄마다 원문만 보고 옮긴 한국어 역번역(back)을 붙인다. 시간은 cuts와 duration에 맞춘다. 자막은 브랜드 자막 디자인으로 입혀지므로 한 줄이 maxCharsPerLine(계정별 글자 수)을 넘지 않게, 한 자막은 두 줄 이내로 쓴다. 영상을 다시 볼 필요는 없다.'
   ].join('\n'),
   inputSchema: {}
 }, () => {

@@ -27,5 +27,16 @@
     "light": "(채워 주세요)",
     "model": "(채워 주세요)",
     "avoid": "(채워 주세요)"
+  },
+  "subtitle": {
+    "font_GLOBAL": "Epilogue",
+    "font_EU": "Epilogue",
+    "font_JP": "Noto Sans JP",
+    "font_KR": "Pretendard",
+    "weight": "600",
+    "size": "50",
+    "position": "63",
+    "color": "auto",
+    "edge": "outline"
   }
 }

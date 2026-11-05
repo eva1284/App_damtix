@@ -217,25 +217,61 @@ function secView(key) {
   const E = ui.edit && ui.edit.key === key ? ui.edit : null;
   let inner;
   if (!E) {
-    inner = `<dl class="kv">${def.fields.map(([k, l, t]) => `<dt>${esc(l)}</dt><dd>${t === 'check' ? `<span class="chip ${obj[k] ? 'st-done' : 'st-crit'}">${fmtVal(obj[k])}</span>` : esc(obj[k]) || '<span class="muted">비어 있음</span>'}</dd>`).join('')}</dl>`;
+    inner = `<dl class="kv">${def.fields.map(([k, l, t, o]) => `<dt>${esc(l)}</dt><dd>${t === 'check' ? `<span class="chip ${obj[k] ? 'st-done' : 'st-crit'}">${fmtVal(obj[k])}</span>` : esc(fieldText(t, o, obj[k])) || '<span class="muted">비어 있음</span>'}</dd>`).join('')}</dl>`;
   } else if (E.step === 'edit') {
-    inner = `<div class="form">${def.fields.map(([k, l, t]) => {
+    inner = `<div class="form">${def.fields.map(([k, l, t, o]) => {
       const id = `f-${key.replace(/\./g, '-')}-${k}`, v = E.draft[k];
+      if (t === 'select') return `<label for="${id}">${esc(l)}<select id="${id}" data-f="${k}">${o.map(([x, xl]) => `<option value="${esc(x)}" ${String(v) === x ? 'selected' : ''}>${esc(xl)}</option>`).join('')}</select></label>`;
+      if (t === 'font') return `<label for="${id}">${esc(l)}<select id="${id}" data-f="${k}">${S.fonts.map(f => `<option value="${esc(f.family)}" ${v === f.family ? 'selected' : ''}>${esc(f.family)} (${f.weights.join('·')})</option>`).join('')}</select></label>`;
+      if (t === 'number') return `<label for="${id}">${esc(l)}<input type="number" inputmode="numeric" id="${id}" data-f="${k}" value="${esc(v)}" min="${o[0]}" max="${o[1]}" step="1"></label>`;
       if (t === 'check') return `<label style="flex-direction:row;align-items:center;gap:12px;color:var(--ink);min-height:44px"><input type="checkbox" id="${id}" data-f="${k}" ${v ? 'checked' : ''}> ${esc(l)}</label>`;
       return `<label for="${id}">${esc(l)}${t === 'textarea' ? `<textarea id="${id}" data-f="${k}">${esc(v)}</textarea>` : `<input type="text" id="${id}" data-f="${k}" value="${esc(v)}">`}</label>`;
     }).join('')}</div>
     <div class="row" style="margin-top:16px"><button class="btn" data-ecancel>취소</button><span class="spacer"></span><button class="btn primary" data-econfirm>바뀐 내용 확인</button></div>`;
   } else {
-    const ch = def.fields.filter(([k]) => E.draft[k] !== obj[k]);
+    const ch = def.fields.filter(([k]) => String(E.draft[k]) !== String(obj[k]));
     const lost = key.endsWith('.markets') ? def.fields.filter(([k]) => obj[k] && !E.draft[k]).map(([k]) => k) : [];
     const ver = key.startsWith('brand.') ? `브랜드 v${bump(S.brand.version)}` : `${key.split('.')[1]} v${prodBy(key.split('.')[1]).version + 1}`;
-    inner = `<div class="diff">${ch.length ? ch.map(([k, l]) => `<div class="d"><b class="small">${esc(l)}</b><div><del>${esc(fmtVal(obj[k]))}</del></div><div><ins>${esc(fmtVal(E.draft[k]))}</ins></div></div>`).join('') : '<p class="empty">바뀐 내용이 없어요.</p>'}</div>
+    inner = `<div class="diff">${ch.length ? ch.map(([k, l, t, o]) => `<div class="d"><b class="small">${esc(l)}</b><div><del>${esc(fieldText(t, o, obj[k]))}</del></div><div><ins>${esc(fieldText(t, o, E.draft[k]))}</ins></div></div>`).join('') : '<p class="empty">바뀐 내용이 없어요.</p>'}</div>
     ${lost.length ? `<div class="cautionbox">주의: 저장하면 ${lost.join(', ')} 시장의 콘텐츠에서 이 제품을 쓸 수 없게 돼요. Claude도 이 제품을 그 시장 콘텐츠에 넣지 않아요.</div>` : ''}
     <label class="small" style="display:block;margin-top:16px">바꾸는 이유 (기록에 남아요)<input type="text" id="ereason" value="${esc(E.reason)}" placeholder="예: 매뉴얼 새 버전 반영, 법무 검토 의견" style="width:100%"></label>
     <p class="small" style="margin:12px 0 0">저장하면 <b>${ver}</b>이 되고, Claude는 다음 작업부터 새 기준을 읽어요.</p>
     <div class="row" style="margin-top:16px"><button class="btn" data-eback>다시 고치기</button><span class="spacer"></span><button class="btn primary" data-esave ${ch.length ? '' : 'disabled'}>저장</button></div>`;
   }
+  if (key === 'brand.subtitle') inner = `<div class="subwrap"><div>${inner}${E ? '' : fontAdd()}</div>${subPreview(E ? E.draft : obj)}</div>`;
   return `<section class="panel"><div class="panel-h"><h2>${esc(def.title)}</h2>${E ? '<span class="chip st-warn">수정 중</span>' : `<button class="btn sm" data-edit="${key}">수정</button>`}</div>${def.note ? `<p class="small muted" style="margin:-8px 0 12px">${esc(def.note)}</p>` : ''}${inner}</section>`;
+}
+const fieldText = (t, o, v) => t === 'select' ? (o.find(([x]) => x === String(v))?.[1] || String(v ?? '')) : t === 'number' ? `${v ?? ''}` : fmtVal(v);
+
+// 자막 디자인 미리보기: 계정마다 어두운 장면·밝은 장면. 고치는 동안에는 잠깐 멈췄을 때 다시 그린다.
+const SUB_ACC = [['GLOBAL', 'GLOBAL · 영어'], ['EU', 'EU · 프랑스어'], ['JP', 'JP · 일본어'], ['KR', '한국어']];
+function subPreview(draft) {
+  const k = JSON.stringify(draft);
+  const p = ui.subPrev;
+  if (p?.key !== k) { clearTimeout(ui.subPrevT); ui.subPrevT = setTimeout(() => loadSubPrev(draft, k), p ? 600 : 0); }
+  return `<div class="subprev" id="subprev" aria-live="polite">${subPrevHtml(p?.key === k ? p.images : p?.images, p?.key !== k)}</div>`;
+}
+function subPrevHtml(images, loading) {
+  if (!images) return '<p class="empty">미리보기를 그리는 중…</p>';
+  return `<div class="subgrid${loading ? ' loading' : ''}">${SUB_ACC.map(([a, l]) => `<div><div class="small" style="font-weight:600;margin-bottom:6px">${l}</div><div class="pair">${images.filter(x => x.account === a).map(x => `<figure><img src="${x.data}" alt="${l} ${x.bg === 'bright' ? '밝은' : '어두운'} 장면 미리보기"><figcaption class="small muted">${x.bg === 'bright' ? '밝은 장면' : '어두운 장면'} · ${x.color === 'black' ? '검정' : '흰'} 글씨</figcaption></figure>`).join('')}</div></div>`).join('')}</div>
+    <p class="small muted" style="margin:8px 0 0">어둡게 칠한 아래쪽은 인스타그램 버튼·설명이 덮는 곳이에요. 한국어는 지금 올리는 계정이 없어서 미리보기로만 보여요.</p>`;
+}
+async function loadSubPrev(draft, k) {
+  try {
+    const r = await api('/api/subtitle-preview', { draft });
+    ui.subPrev = { key: k, images: r.images };
+  } catch (e) { ui.subPrev = { key: k, images: null }; toast(e.message); }
+  const el = $('#subprev');
+  if (el && (!ui.edit || JSON.stringify(ui.edit.draft) === k)) el.innerHTML = subPrevHtml(ui.subPrev.images, false);
+}
+const fontAdd = () => `<div class="row" style="margin-top:12px"><span class="small muted">들어 있는 글꼴: ${S.fonts.map(f => esc(f.family)).join(', ')}</span><span class="spacer"></span><label class="btn sm" style="cursor:pointer">글꼴 추가 (ttf·otf)<input type="file" accept=".ttf,.otf,font/ttf,font/otf" data-fontfile hidden></label></div>`;
+async function uploadFont(file) {
+  await run(async () => {
+    const res = await fetch('/api/fonts/upload', { method: 'POST', headers: { 'x-filename': encodeURIComponent(file.name) }, body: file });
+    const r = await res.json();
+    if (!res.ok) throw new Error(r.error || '글꼴을 넣지 못했어요.');
+    S = r.state; render(); toast(`${r.font.family} (${r.font.weight}) 글꼴을 넣었어요. 수정에서 고를 수 있어요.`);
+  });
 }
 const bump = v => { const [a, b] = String(v).split('.').map(Number); return `${a}.${(b || 0) + 1}`; };
 
@@ -264,7 +300,7 @@ async function loadImages(code) {
 function vBrand() {
   const tabs = [['brand', '브랜드 전체'], ['sku', '제품별 (SKU)'], ['prop', `업데이트 제안${S.proposals.length ? ' ' + S.proposals.length : ''}`], ['hist', '변경 이력']];
   let body = '';
-  if (ui.btab === 'brand') body = ['brand.core', 'brand.tone', 'brand.rules', 'brand.visual'].map(secView).join('');
+  if (ui.btab === 'brand') body = ['brand.core', 'brand.tone', 'brand.rules', 'brand.visual', 'brand.subtitle'].map(secView).join('');
   if (ui.btab === 'sku') {
     const p = prodBy(ui.sku) || S.products[0];
     const r = p.registration || {};
@@ -415,6 +451,7 @@ function savePinsSoon(w, resultId) {
 }
 
 /* ---------- 영상 제작 ---------- */
+const subColorOf = () => ui.subColor || S.brand.subtitle?.color || 'auto';
 const fmtT = s => { const v = Math.max(0, Number(s) || 0); return `${Math.floor(v / 60)}:${(v % 60).toFixed(1).padStart(4, '0')}`; };
 function vNotesOf(w) { return ui.vNotes || w.video.notes || []; }
 let vNotesTimer = null;
@@ -484,6 +521,8 @@ function videoPanel(w) {
     else if (['requested', 'fix'].includes(sub.status)) subBody = `<div class="status"><span class="dot"></span><div class="small">${esc(S.subStatus[sub.status])} (${v.versions.join(', ')})${sub.status === 'fix' ? ` · 수정 요청: ${esc(sub.fixes[0]?.note)}` : ''}</div></div>${cmdBox()}`;
     else subBody = v.versions.map(a => { const la = { GLOBAL: 'en', JP: 'ja', EU: 'fr' }[a]; const iss = sub.checks?.[a]?.issues || []; return `<h3 style="margin:16px 0 8px">${a} · ${esc(S.accounts[a].lang)}</h3>
         <div class="tbl"><table class="subs"><thead><tr><th>시간</th><th>원문</th><th>한국어 역번역</th></tr></thead><tbody>${(sub.tracks[a] || []).map(sg => `<tr><td class="tc">${fmtT(sg.start)}–${fmtT(sg.end)}</td><td lang="${la}">${esc(sg.text)}</td><td>${esc(sg.back)}</td></tr>`).join('')}</tbody></table></div>
+        ${ui.subStill?.[a] ? `<div class="stills" aria-label="${a} 자막을 입힌 장면">${(sub.tracks[a] || []).map((sg, i) => `<figure><img src="/work-sub-still?id=${w.id}&acc=${a}&i=${i}&color=${subColorOf()}&v=${encodeURIComponent(sub.at || '')}" alt="${fmtT(sg.start)} 장면" loading="lazy"><figcaption class="small muted">${fmtT(sg.start)}</figcaption></figure>`).join('')}</div><button class="btn sm" data-substill="${a}" style="margin-top:8px">장면 닫기</button>`
+          : `<button class="btn sm" data-substill="${a}" style="margin-top:8px">영상에 입힌 모습 보기</button>`}
         ${iss.map(i => `<div class="check"><span class="ic" style="background:var(--yellow-soft);color:var(--yellow)">!</span><span>${esc(i.message)}</span></div>`).join('')}`; }).join('')
       + (sub.status === 'review' ? (ui.vFixOpen === 'subs' ? `<label class="small" style="display:block;margin-top:16px">자막을 어떻게 고칠까요? (한국어로)<textarea id="vsub-note" placeholder="예: JP 2번 줄을 더 짧게"></textarea></label><div class="row" style="margin-top:12px"><button class="btn" data-vid="fixcancel">취소</button><span class="spacer"></span><button class="btn primary" data-vid="fixsubs">수정 요청 보내기</button></div>`
         : `<div class="row" style="margin-top:16px"><button class="btn" data-vid="fixopen-subs">수정 요청</button><span class="spacer"></span><button class="btn primary" data-vid="confirmsubs">자막 컨펌</button></div>`) : '');
@@ -491,11 +530,11 @@ function videoPanel(w) {
     body = `${v.error ? `<div class="warnbox" style="margin:0 0 12px">${esc(v.error)}</div>` : ''}<video src="${workFile(w, vid.file)}" controls playsinline preload="metadata" style="width:100%;max-width:320px;max-height:480px;background:#000;border-radius:11px;display:block"></video>
       <h3 style="margin-top:16px">자막 <span class="chip ${sub.status === 'confirmed' ? 'st-done' : sub.status === 'review' ? 'st-you' : 'st-claude'}" style="margin-left:4px">${esc(sub.off ? '자막 없음' : S.subStatus[sub.status])}</span></h3>${subBody}
       ${v.stage === 'finalizing' ? `<div class="status" style="margin-top:16px"><span class="dot warn"></span><div class="small">나라별 영상을 만드는 중… (${v.job?.done || 0}/${v.job?.total || 0}) 영상 길이에 따라 몇 분 걸려요. 이 화면을 닫아도 계속 진행돼요.</div></div>`
-        : ready ? `<div class="row" style="margin-top:16px"><span class="small muted">${v.versions.join(', ')} 버전 · 자막 입히기 → 용량 최적화(H.264 · 가로 1080px) → Mac 폴더 → Google Drive</span><span class="spacer"></span><button class="btn primary" data-vid="final">최종 컨펌</button></div>` : ''}`;
+        : ready ? `${sub.off ? '' : `<div class="row" role="radiogroup" aria-label="자막 글씨 색" style="margin-top:16px;gap:4px 16px"><span class="small" style="font-weight:600">자막 글씨 색</span>${Object.entries(S.subColors).map(([k, l]) => `<label class="small" style="display:flex;gap:8px;align-items:center;min-height:44px"><input type="radio" name="subcolor" data-subcolor="${k}" ${subColorOf() === k ? 'checked' : ''}> ${esc(l)}</label>`).join('')}</div>`}<div class="row" style="margin-top:8px"><span class="small muted">${v.versions.join(', ')} 버전 · 자막 입히기 → 용량 최적화(H.264 · 가로 1080px) → Mac 폴더 → Google Drive</span><span class="spacer"></span><button class="btn primary" data-vid="final">최종 컨펌</button></div>` : ''}`;
   } else if (v.stage === 'done') {
     const f = v.final;
     body = `<ol class="pipe">
-      <li class="ok"><span class="pi">✓</span><div style="min-width:0"><b class="small">나라별 영상 · 용량 최적화</b><div class="small muted">${f.outputs.map(o => `${esc(o.file)} · ${fmtSize(o.before)} → ${fmtSize(o.after)} · ${o.width}×${o.height}`).join('<br>')}</div></div></li>
+      <li class="ok"><span class="pi">✓</span><div style="min-width:0"><b class="small">나라별 영상 · 용량 최적화</b><div class="small muted">${f.outputs.map(o => `${esc(o.file)} · ${fmtSize(o.before)} → ${fmtSize(o.after)} · ${o.width}×${o.height}${o.subColors ? ` · 자막 흰 ${o.subColors.white} · 검정 ${o.subColors.black}` : ''}`).join('<br>')}</div></div></li>
       <li class="ok"><span class="pi">✓</span><div style="min-width:0"><b class="small">내 Mac에 저장</b><div class="small muted path">${f.folders.map(esc).join('<br>')}</div></div></li>
       <li class="${f.drive.status === 'copied' ? 'ok' : ''}"><span class="pi">${f.drive.status === 'copied' ? '✓' : '–'}</span><div style="min-width:0"><b class="small">Google Drive</b><div class="small muted path">${f.drive.status === 'copied' ? f.drive.paths.map(esc).join('<br>') : f.drive.status === 'missing' ? 'Drive 폴더를 찾을 수 없어서 복사하지 못했어요.' : 'Drive 복사가 꺼져 있어요 (홈 > 완성본 저장).'}</div></div></li></ol>
       <div class="row" style="margin-top:12px">${S.info.local ? f.folders.map((d, i) => `<button class="btn sm" data-open="mac" data-index="${i}">${esc(d.split('/').slice(-2, -1)[0])} 폴더 열기</button>`).join('') : ''}<span class="spacer"></span><button class="btn sm" data-vid="again">새 버전 만들기</button></div>`;
@@ -635,6 +674,7 @@ document.addEventListener('click', e => {
       ui.imgFixOpen = false; ui.draftPick = null; ui.pins = {}; if (d.img === 'final') ui.finalPick = new Set(); render(); toast(c[2]);
     });
   }
+  if (d.substill) { ui.subStill = { ...ui.subStill, [d.substill]: !ui.subStill?.[d.substill] }; render(); return; }
   if (d.vid || d.vapprove || d.vmethod || d.vseek !== undefined || d.vrange !== undefined || d.vdel !== undefined) {
     const w = cw(); if (!w) return;
     const vp = $('#vp');
@@ -652,7 +692,7 @@ document.addEventListener('click', e => {
       approve: ['video-approve', { versions: ui.versions || w.video?.versions, subtitles: ui.subsOn }, ui.subsOn ? '영상을 컨펌했어요. 자막을 Claude에게 맡겼어요.' : '영상을 컨펌했어요.'],
       fixsubs: ['video-subs-fix', { note: $('#vsub-note')?.value }, '자막 수정 요청을 보냈어요.'],
       confirmsubs: ['video-subs-confirm', {}, '자막을 컨펌했어요.'],
-      final: ['video-final', {}, '나라별 영상을 만드는 중이에요. 몇 분 걸릴 수 있어요.']
+      final: ['video-final', { subColor: subColorOf() }, '나라별 영상을 만드는 중이에요. 몇 분 걸릴 수 있어요.']
     };
     const c = d.vapprove ? ['video-approve-story', { method: d.vapprove }, d.vapprove === 'claude' ? '승인했어요. Claude가 편집할 차례예요.' : '승인했어요. CapCut에서 편집해서 올려 주세요.'] : d.vmethod ? ['video-method', { method: d.vmethod }, d.vmethod === 'claude' ? 'Claude가 편집하도록 바꿨어요.' : 'CapCut에서 직접 편집하도록 바꿨어요.'] : calls[d.vid];
     if (!c) return;
@@ -680,6 +720,7 @@ document.addEventListener('input', e => {
   if (t.dataset.vnote !== undefined) { const w = S.works.find(x => x.id === dropWork()); const n = vNotesOf(w).map(x => ({ ...x })); n[Number(t.dataset.vnote)].text = t.value; ui.vNotes = n; saveVNotesSoon(w); }
   if (t.dataset.pin) { const w = S.works.find(x => x.id === (/^#work-([A-Za-z]+-\d+)$/.exec(location.hash) || [])[1]?.toUpperCase()); const r = w.image.results.find(x => x.id === t.dataset.pin); const pins = pinsOf(r).map(p => ({ ...p })); pins[Number(t.dataset.i)].note = t.value; ui.pins[r.id] = pins; savePinsSoon(w, r.id); }
   if (t.dataset.f && ui.edit) ui.edit.draft[t.dataset.f] = t.type === 'checkbox' ? t.checked : t.value;
+  if (t.dataset.f && ui.edit?.key === 'brand.subtitle') { const draft = { ...ui.edit.draft }, k = JSON.stringify(draft); clearTimeout(ui.subPrevT); $('#subprev .subgrid')?.classList.add('loading'); ui.subPrevT = setTimeout(() => loadSubPrev(draft, k), 600); }
   if (t.id === 'ereason' && ui.edit) ui.edit.reason = t.value;
   if (t.id === 'ck-text') ui.check.text = t.value;
 });
@@ -689,11 +730,14 @@ document.addEventListener('change', e => { const t = e.target;
   if (t.dataset.filefor !== undefined && t.files.length) { uploadFiles([...t.files], t.dataset.filefor); }
   if (t.dataset.final) { t.checked ? ui.finalPick.add(t.dataset.final) : ui.finalPick.delete(t.dataset.final); render(); }
   if (t.dataset.upscale) { ui.upscale = t.dataset.upscale; }
+  if (t.dataset.subcolor) { ui.subColor = t.dataset.subcolor; render(); }
   if (t.dataset.cutimg !== undefined) { const w = S.works.find(x => x.id === dropWork()); if (w) run(async () => { S = (await api(`/api/works/${w.id}/video-cut-image`, { cutId: t.dataset.cutimg, imageId: t.value })).state; render(); toast(t.value ? `${t.dataset.cutimg}에 ${t.value}를 넣었어요.` : `${t.dataset.cutimg}에서 이미지를 뺐어요.`); }); }
   if (t.dataset.version) { const w = S.works.find(x => x.id === dropWork()); const set = new Set(ui.versions || w.video.versions || [w.account]); t.checked ? set.add(t.dataset.version) : set.delete(t.dataset.version); set.add(w.account); ui.versions = [...set]; }
   if (t.id === 'subs-on') ui.subsOn = t.checked;
   if (t.dataset.vfile && t.files.length) uploadVideoFile(t.dataset.vfile, t.files[0]);
-  if (ui.newWork && t.id?.startsWith('nw-')) { const k = { 'nw-type': 'type', 'nw-acc': 'acc', 'nw-prod': 'prod', 'nw-date': 'date' }[t.id]; if (k) ui.newWork[k] = t.value; if (t.id === 'nw-cap') ui.newWork.cap = t.checked; } if (t.dataset.f && ui.edit && t.type === 'checkbox') ui.edit.draft[t.dataset.f] = t.checked; });
+  if (ui.newWork && t.id?.startsWith('nw-')) { const k = { 'nw-type': 'type', 'nw-acc': 'acc', 'nw-prod': 'prod', 'nw-date': 'date' }[t.id]; if (k) ui.newWork[k] = t.value; if (t.id === 'nw-cap') ui.newWork.cap = t.checked; } if (t.dataset.f && ui.edit && t.type === 'checkbox') ui.edit.draft[t.dataset.f] = t.checked;
+  if (t.dataset.fontfile !== undefined && t.files.length) uploadFont(t.files[0]);
+});
 
 // 다른 곳(Claude 앱, 다른 기기)에서 바뀐 내용을 30초마다 반영. 수정 중일 때는 건드리지 않는다.
 function refresh() {

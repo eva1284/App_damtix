@@ -10,9 +10,11 @@ import { IMAGE_EXT, migrateConfig, productImages, folderMap, listTopFolders, set
 import { spawn } from 'node:child_process';
 import { listRefs, getRef, refPath, addFileRef, addUrlRef, updateRef, link as linkRef, unlink as unlinkRef, deleteRef, dropWorkLinks } from './lib/refs.js';
 import { IMAGE_STAGE, requestDrafts, fixDrafts, pickDraft, savePins, fixResults, finalConfirm } from './lib/imagework.js';
-import { VIDEO_STAGE, SUB_STATUS, requestStory, fixStory, setCutImage, approveStory, setMethod, uploadVideo, saveNotes, fixVideo, approveVideo, fixSubtitles, confirmSubtitles, finalConfirmVideo } from './lib/videowork.js';
+import { VIDEO_STAGE, SUB_STATUS, requestStory, fixStory, setCutImage, approveStory, setMethod, uploadVideo, saveNotes, fixVideo, approveVideo, fixSubtitles, confirmSubtitles, finalConfirmVideo, subtitleStill } from './lib/videowork.js';
 import { finalsConfig, setFinals, driveCandidates } from './lib/finalize.js';
 import { claudeQueue } from './lib/queue.js';
+import { listFonts, addFont } from './lib/fonts.js';
+import { stylePreview, subtitleStyle, lineLimit, COLOR_MODES, SAFE_BOTTOM } from './lib/subtitles.js';
 import { WORK_DIR, REF_DIR } from './lib/files.js';
 import { TYPES as WORK_TYPES, STORES, CAPTION_STATUS, listWorks, createWork, updateWork, deleteWork, requestCaption, fixCaption, confirmCaption, reopenCaption } from './lib/works.js';
 
@@ -55,7 +57,7 @@ function readBody(req) {
 function readRaw(req, max = 300 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let size = 0; const chunks = [];
-    req.on('data', c => { size += c.length; if (size > max) { reject(new Error('파일이 너무 커요 (300MB 초과).')); req.destroy(); } else chunks.push(c); });
+    req.on('data', c => { size += c.length; if (size > max) { reject(new Error(`파일이 너무 커요 (${Math.round(max / 1048576)}MB 초과).`)); req.destroy(); } else chunks.push(c); });
     req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
@@ -100,6 +102,7 @@ function state(req) {
     history: load('history').map(({ snapshot, ...h }) => h),
     defs: DEFS, accounts: ACCOUNTS, types: WORK_TYPES, stores: STORES, captionStatus: CAPTION_STATUS,
     works: listWorks(), queue: claudeQueue(), refs: listRefs(), imageStage: IMAGE_STAGE, videoStage: VIDEO_STAGE, subStatus: SUB_STATUS,
+    fonts: listFonts(), subColors: COLOR_MODES, subLimits: Object.fromEntries(Object.keys(ACCOUNTS).map(a => [a, lineLimit(subtitleStyle(), a)])), safeBottom: SAFE_BOTTOM,
     info: {
       local, imageRoot: config.imageRoot, imageRootExists: fs.existsSync(config.imageRoot), folders: folderMap(),
       finals: { ...finalsConfig(), driveExists: !!config.driveFolder && fs.existsSync(config.driveFolder), driveCandidates: local ? driveCandidates() : [] },
@@ -169,7 +172,7 @@ async function route(req, res) {
   m = /^\/api\/works\/([A-Za-z]+-\d+)\/video-(request|fix-story|cut-image|approve-story|method|notes|fix|approve|subs-fix|subs-confirm|final)$/.exec(p);
   if (m && req.method === 'POST') {
     const b = await readBody(req), id = m[1], by = who(req);
-    const w = await ({ request: () => requestStory(id, b.note, by), 'fix-story': () => fixStory(id, b.note, by), 'cut-image': () => setCutImage(id, b.cutId, b.imageId, by), 'approve-story': () => approveStory(id, b.method, by), method: () => setMethod(id, b.method, by), notes: () => saveNotes(id, b.notes, by), fix: () => fixVideo(id, b.note, by), approve: () => approveVideo(id, b.versions, b.subtitles !== false, by), 'subs-fix': () => fixSubtitles(id, b.note, by), 'subs-confirm': () => confirmSubtitles(id, by), final: () => finalConfirmVideo(id, by) }[m[2]])();
+    const w = await ({ request: () => requestStory(id, b.note, by), 'fix-story': () => fixStory(id, b.note, by), 'cut-image': () => setCutImage(id, b.cutId, b.imageId, by), 'approve-story': () => approveStory(id, b.method, by), method: () => setMethod(id, b.method, by), notes: () => saveNotes(id, b.notes, by), fix: () => fixVideo(id, b.note, by), approve: () => approveVideo(id, b.versions, b.subtitles !== false, by), 'subs-fix': () => fixSubtitles(id, b.note, by), 'subs-confirm': () => confirmSubtitles(id, by), final: () => finalConfirmVideo(id, by, { subColor: b.subColor }) }[m[2]])();
     return send(res, 200, { work: w, state: state(req) });
   }
   m = /^\/api\/works\/([A-Za-z]+-\d+)\/video-upload$/.exec(p);
@@ -177,6 +180,16 @@ async function route(req, res) {
     const tmp = path.join(os.tmpdir(), `cc-upload-${Date.now()}`);
     try { await streamToFile(req, tmp); const w = await uploadVideo(m[1], tmp, who(req)); return send(res, 200, { work: w, state: state(req) }); }
     finally { fs.rmSync(tmp, { force: true }); }
+  }
+  // 자막 디자인: 미리보기, 글꼴 추가
+  if (p === '/api/subtitle-preview' && req.method === 'POST') {
+    const b = await readBody(req);
+    return send(res, 200, { images: await stylePreview(b.draft || {}) });
+  }
+  if (p === '/api/fonts/upload' && req.method === 'POST') {
+    const buffer = await readRaw(req, 40 * 1024 * 1024);
+    const font = addFont(decodeURIComponent(req.headers['x-filename'] || ''), buffer);
+    return send(res, 200, { font, state: state(req) });
   }
   // 레퍼런스
   if (p === '/api/refs/upload' && req.method === 'POST') {
@@ -224,6 +237,10 @@ async function route(req, res) {
   if (p === '/ref-file' && req.method === 'GET') {
     let r; try { r = getRef(url.searchParams.get('id') || ''); } catch { return fail(res, 404, '파일이 없어요.'); }
     return r.file ? sendFile(res, path.join(REF_DIR, r.file), req) : fail(res, 404, '파일이 없는 레퍼런스예요.');
+  }
+  if (p === '/work-sub-still' && req.method === 'GET') {
+    const img = await subtitleStill(url.searchParams.get('id'), url.searchParams.get('acc'), url.searchParams.get('i'), url.searchParams.get('color'));
+    return send(res, 200, img, 'image/jpeg', { 'cache-control': 'no-store' });
   }
   if (p === '/work-file' && req.method === 'GET') {
     const id = String(url.searchParams.get('id') || '').toUpperCase(), f = url.searchParams.get('f') || '';
