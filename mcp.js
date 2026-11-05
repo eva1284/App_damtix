@@ -8,7 +8,8 @@ import { migrateConfig, productImages, folderMap, collectImages } from './lib/im
 import { ACCOUNTS, DEFS, checkText, addProposal } from './lib/rules.js';
 import { listWorks, getWork, createWork, submitCaption } from './lib/works.js';
 import { getRef, refPath, refsFor, submitAnalysis } from './lib/refs.js';
-import { submitDrafts, submitImages, imageForClaude, imageOf } from './lib/imagework.js';
+import { submitDrafts, submitImages, submitUpscaled, imageForClaude, imageOf } from './lib/imagework.js';
+import { submitStory, submitVideo, submitSubtitles, videoForClaude, framesForClaude } from './lib/videowork.js';
 import { workDir } from './lib/files.js';
 import { finalsConfig } from './lib/finalize.js';
 import { claudeQueue } from './lib/queue.js';
@@ -134,7 +135,15 @@ tool('list_queue', {
     '',
     '[구도 시안 만들기/고치기] 실제 생성 전에 크레딧 없이 보는 컴퓨터 스케치다. 기획 메모, request.note, 연결된 레퍼런스(references, part가 있으면 그 부분용), 브랜드 비주얼 기준을 보고, 4:5(1080x1350) 비율 viewBox의 단순한 SVG 2~3개를 만든다: 무채색 도형으로 제품 위치·크기, 모델/손 위치, 문구 자리, 소품, 빛 방향을 표시하고 한국어 라벨을 붙인다. 고치기는 latestFix.note를 반영한다. submit_drafts로 보낸다.',
     '',
-    '[이미지 만들기/고치기] image.pickedDraft(고른 구도 SVG 파일과 메모)를 따른다. get_product로 그 제품의 기준 이미지(referenceImages)를 항상 참조 이미지로 쓰고, 모델이 나오면 get_image_folders의 realModels/aiModels 사진을 써서 얼굴을 유지한다. Higgsfield로 생성하기 전에 예상 크레딧을 사용자에게 먼저 알리고 확인을 받는다. 결과는 submit_images로 보낸다(주소 url 또는 Mac 파일 path). 고치기는 latestFix의 핀(x,y는 왼쪽 위 기준 %)과 메모를 반영하고, view_work_image로 지금 결과를 보고 고친다. 그림 속 문구는 그 계정 언어로 쓰고 check_text로 검사한다.'
+    '[이미지 만들기/고치기] image.pickedDraft(고른 구도 SVG 파일과 메모)를 따른다. get_product로 그 제품의 기준 이미지(referenceImages)를 항상 참조 이미지로 쓰고, 모델이 나오면 get_image_folders의 realModels/aiModels 사진을 써서 얼굴을 유지한다. Higgsfield로 생성하기 전에 예상 크레딧을 사용자에게 먼저 알리고 확인을 받는다. 결과는 submit_images로 보낸다(주소 url 또는 Mac 파일 path). 고치기는 latestFix의 핀(x,y는 왼쪽 위 기준 %)과 메모를 반영하고, view_work_image로 지금 결과를 보고 고친다. 그림 속 문구는 그 계정 언어로 쓰고 check_text로 검사한다.',
+    '',
+    '[최종 이미지 업스케일] image.upscale.files의 이미지만 Higgsfield로 가로 1080px 이상으로 업스케일한다. 예상 크레딧을 먼저 알리고 확인을 받은 뒤 submit_upscaled로 보내면 프로그램이 바로 최종 저장까지 한다.',
+    '',
+    '[스토리보드 만들기/고치기] 기획·레퍼런스(part가 cut:n이면 그 컷용)를 보고 9:16 릴스 컷 구성을 submit_storyboard로 보낸다. 컷마다 시작·끝(초), 장면 설명, 카메라, 화면 자막 초안(그 계정 언어)과 한국어 뜻. 토큰을 아끼려고 SVG 스케치는 꼭 필요한 컷만 넣는다.',
+    '',
+    '[영상 편집하기/고치기] video.story를 따른다. 컷에 fromImage(이미지 작업 번호)가 있으면 그 작업의 최종 이미지로 그 컷을 만든다(get_work). Higgsfield 영상 생성은 예상 크레딧을 먼저 알리고 확인을 받는다. 편집은 CapCut 연결이 있으면 그것으로 한다. 자막은 넣지 않는다(프로그램이 나라별로 입힌다). 완성 영상은 submit_video로 보낸다. 고치기는 latestFix.notes(초 단위 시간과 메모)를 반영하고, 필요한 장면만 view_video_frames로 확인한다.',
+    '',
+    '[자막 쓰기/고치기] languages의 모든 언어를 한 번에 submit_subtitles로 보낸다. 각 언어로 자연스럽게 쓰고, 줄마다 원문만 보고 옮긴 한국어 역번역(back)을 붙인다. 시간은 cuts와 duration에 맞춘다. 한 줄은 짧게(영어 기준 40자 이내). 영상을 다시 볼 필요는 없다.'
   ].join('\n'),
   inputSchema: {}
 }, () => {
@@ -148,7 +157,7 @@ tool('get_work', {
   inputSchema: { id: z.string() }
 }, ({ id }) => {
   const w = getWork(id);
-  return { ...w, image: w.type === 'image' ? imageForClaude(w) : undefined, references: refsFor(w.id).map(r => ({ id: r.id, title: r.title, kind: r.kind, memo: r.memo, analysis: r.analysis, parts: r.links.filter(l => l.work === w.id).map(l => l.part || '전체') })) };
+  return { ...w, image: w.type === 'image' ? imageForClaude(w) : undefined, video: w.type === 'video' ? videoForClaude(w) : undefined, references: refsFor(w.id).map(r => ({ id: r.id, title: r.title, kind: r.kind, memo: r.memo, analysis: r.analysis, parts: r.links.filter(l => l.work === w.id).map(l => l.part || '전체') })) };
 });
 
 tool('list_works', {
@@ -225,6 +234,43 @@ tool('view_work_image', {
   if (!item) throw new Error(`${work_id}에 ${item_id}가 없어요. get_work로 번호를 확인하세요.`);
   const pins = item.pins?.length ? `\n핀 메모 (x,y는 왼쪽 위 기준 %): ${item.pins.map((p, i) => `${i + 1}) (${p.x.toFixed(0)}%, ${p.y.toFixed(0)}%) ${p.note}`).join(' / ')}` : '';
   return { __content: [{ type: 'text', text: `${w.id} ${item.id}${item.title ? ` · ${item.title}` : ''}${pins}` }, await imageContent(path.join(workDir(w.id), item.file))] };
+});
+
+tool('submit_upscaled', {
+  title: '업스케일한 이미지 보내기',
+  description: '최종 이미지 업스케일 작업의 결과를 보낸다. 고른 이미지(result_id) 모두를 보내야 하고, 받으면 프로그램이 최적화·Mac 폴더·Google Drive 저장까지 바로 한다.',
+  inputSchema: { work_id: z.string(), items: z.array(z.object({ result_id: z.string(), url: z.string().optional(), path: z.string().optional() })).min(1) }
+}, async ({ work_id, items }) => { const w = await submitUpscaled(work_id, items); return `${w.id} 업스케일 이미지를 받아서 최종 저장까지 했어요.`; });
+
+tool('submit_storyboard', {
+  title: '스토리보드 보내기',
+  description: '영상 작업의 컷 구성을 보낸다. start/end는 초 단위. text는 그 계정 언어의 화면 자막 초안, back은 그 한국어 뜻. from_image에 이미지 작업 번호를 넣으면 그 이미지로 시작하는 컷이 된다. svg 스케치는 선택(9:16 viewBox, 무채색 도형 + 한국어 라벨).',
+  inputSchema: {
+    work_id: z.string(),
+    cuts: z.array(z.object({ start: z.number(), end: z.number(), desc: z.string(), camera: z.string().optional(), text: z.string().optional(), back: z.string().optional(), from_image: z.string().optional(), svg: z.string().optional() })).min(1).max(30),
+    note: z.string().optional()
+  }
+}, ({ work_id, cuts, note }) => { const w = submitStory(work_id, { cuts, note }); return `${w.id} 스토리보드 ${cuts.length}컷을 보냈어요. 사용자가 검수할 차례예요.`; });
+
+tool('submit_video', {
+  title: '편집한 영상 보내기',
+  description: '완성한 영상(자막 없이)을 보낸다. 내려받을 수 있는 주소(url) 또는 Mac의 파일 경로(path). mp4·mov·webm, 1GB 이하.',
+  inputSchema: { work_id: z.string(), url: z.string().optional(), path: z.string().optional(), note: z.string().optional().describe('사용자에게 남길 한국어 한 줄') }
+}, async ({ work_id, url, path: p, note }) => { const w = await submitVideo(work_id, { url, path: p, note }); const v = w.video.videos[0]; return `${w.id} 영상을 보냈어요 (${v.duration.toFixed(1)}초, ${v.width}×${v.height}). 사용자가 타임라인으로 검수할 차례예요.`; });
+
+tool('submit_subtitles', {
+  title: '자막 보내기 (모든 언어 한 번에)',
+  description: '영상 자막을 언어별로 한 번에 보낸다. tracks의 키는 계정(GLOBAL, JP, EU)이고 값은 [{start, end, text, back}] 목록. back은 원문만 보고 옮긴 한국어 역번역. 금지 표현이 있으면 저장되지 않는다. 자막은 프로그램이 영상에 입힌다.',
+  inputSchema: { work_id: z.string(), tracks: z.record(z.string(), z.array(z.object({ start: z.number(), end: z.number(), text: z.string(), back: z.string() }))) }
+}, ({ work_id, tracks }) => { const w = submitSubtitles(work_id, tracks); return `${w.id} 자막(${Object.keys(tracks).join(', ')})을 보냈어요. 사용자가 검수할 차례예요.`; });
+
+tool('view_video_frames', {
+  title: '영상 장면 보기',
+  description: '작업의 최신 영상에서 몇 장면을 작은 사진으로 본다(최대 6장). 수정 메모가 가리키는 시간만 골라 보면 토큰을 아낄 수 있다. times를 비우면 처음·중간·끝.',
+  inputSchema: { work_id: z.string(), times: z.array(z.number()).max(6).optional().describe('초 단위') }
+}, async ({ work_id, times }) => {
+  const r = await framesForClaude(work_id, times);
+  return { __content: [{ type: 'text', text: `${work_id} ${r.video.id} (${r.video.duration.toFixed(1)}초) · 장면: ${r.frames.map(f => `${f.t.toFixed(1)}초`).join(', ')}` }, ...r.frames.map(f => ({ type: 'image', data: f.data, mimeType: 'image/jpeg' }))] };
 });
 
 tool('submit_caption', {

@@ -10,6 +10,7 @@ import { IMAGE_EXT, migrateConfig, productImages, folderMap, listTopFolders, set
 import { spawn } from 'node:child_process';
 import { listRefs, getRef, refPath, addFileRef, addUrlRef, updateRef, link as linkRef, unlink as unlinkRef, deleteRef, dropWorkLinks } from './lib/refs.js';
 import { IMAGE_STAGE, requestDrafts, fixDrafts, pickDraft, savePins, fixResults, finalConfirm } from './lib/imagework.js';
+import { VIDEO_STAGE, SUB_STATUS, requestStory, fixStory, setCutImage, approveStory, setMethod, uploadVideo, saveNotes, fixVideo, approveVideo, fixSubtitles, confirmSubtitles, finalConfirmVideo } from './lib/videowork.js';
 import { finalsConfig, setFinals, driveCandidates } from './lib/finalize.js';
 import { claudeQueue } from './lib/queue.js';
 import { WORK_DIR, REF_DIR } from './lib/files.js';
@@ -60,11 +61,34 @@ function readRaw(req, max = 300 * 1024 * 1024) {
   });
 }
 
-function sendFile(res, file) {
+// 파일 보내기. 영상 재생에서 원하는 지점으로 건너뛸 수 있게 Range 요청도 받는다.
+function sendFile(res, file, req) {
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) return fail(res, 404, '파일이 없어요.');
-    res.writeHead(200, { 'content-type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', 'content-length': st.size, 'cache-control': 'no-cache' });
+    const type = TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
+    const range = /^bytes=(\d*)-(\d*)$/.exec(req?.headers.range || '');
+    if (range && (range[1] || range[2])) {
+      let start = range[1] ? Number(range[1]) : Math.max(0, st.size - Number(range[2]));
+      let end = range[1] && range[2] ? Math.min(Number(range[2]), st.size - 1) : st.size - 1;
+      if (start > end || start >= st.size) { res.writeHead(416, { 'content-range': `bytes */${st.size}` }); return res.end(); }
+      res.writeHead(206, { 'content-type': type, 'content-length': end - start + 1, 'content-range': `bytes ${start}-${end}/${st.size}`, 'accept-ranges': 'bytes', 'cache-control': 'no-cache' });
+      return fs.createReadStream(file, { start, end }).pipe(res);
+    }
+    res.writeHead(200, { 'content-type': type, 'content-length': st.size, 'accept-ranges': 'bytes', 'cache-control': 'no-cache' });
     fs.createReadStream(file).pipe(res);
+  });
+}
+
+// 큰 영상 올리기: 메모리에 담지 않고 바로 파일로 쓴다 (최대 1GB)
+function streamToFile(req, dest, max = 1024 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const out = fs.createWriteStream(dest);
+    req.on('data', c => { size += c.length; if (size > max) { req.destroy(); out.destroy(); fs.rmSync(dest, { force: true }); reject(new Error('영상이 너무 커요 (1GB 초과).')); } });
+    req.pipe(out);
+    out.on('finish', () => resolve(size));
+    out.on('error', reject);
+    req.on('error', reject);
   });
 }
 
@@ -75,7 +99,7 @@ function state(req) {
     brand: load('brand'), products: load('products'), proposals: load('proposals'),
     history: load('history').map(({ snapshot, ...h }) => h),
     defs: DEFS, accounts: ACCOUNTS, types: WORK_TYPES, stores: STORES, captionStatus: CAPTION_STATUS,
-    works: listWorks(), queue: claudeQueue(), refs: listRefs(), imageStage: IMAGE_STAGE,
+    works: listWorks(), queue: claudeQueue(), refs: listRefs(), imageStage: IMAGE_STAGE, videoStage: VIDEO_STAGE, subStatus: SUB_STATUS,
     info: {
       local, imageRoot: config.imageRoot, imageRootExists: fs.existsSync(config.imageRoot), folders: folderMap(),
       finals: { ...finalsConfig(), driveExists: !!config.driveFolder && fs.existsSync(config.driveFolder), driveCandidates: local ? driveCandidates() : [] },
@@ -138,8 +162,21 @@ async function route(req, res) {
   m = /^\/api\/works\/([A-Za-z]+-\d+)\/image-(request|fix-drafts|pick|pins|fix|final)$/.exec(p);
   if (m && req.method === 'POST') {
     const b = await readBody(req), id = m[1], by = who(req);
-    const w = await ({ request: () => requestDrafts(id, b.note, by), 'fix-drafts': () => fixDrafts(id, b.note, by), pick: () => pickDraft(id, b.draftId, b.note, by), pins: () => savePins(id, b.resultId, b.pins, by), fix: () => fixResults(id, b.note, by), final: () => finalConfirm(id, b.resultIds, by) }[m[2]])();
+    const w = await ({ request: () => requestDrafts(id, b.note, by), 'fix-drafts': () => fixDrafts(id, b.note, by), pick: () => pickDraft(id, b.draftId, b.note, by), pins: () => savePins(id, b.resultId, b.pins, by), fix: () => fixResults(id, b.note, by), final: () => finalConfirm(id, b.resultIds, b.upscale || 'none', by) }[m[2]])();
     return send(res, 200, { work: w, state: state(req) });
+  }
+  // 영상 제작 단계
+  m = /^\/api\/works\/([A-Za-z]+-\d+)\/video-(request|fix-story|cut-image|approve-story|method|notes|fix|approve|subs-fix|subs-confirm|final)$/.exec(p);
+  if (m && req.method === 'POST') {
+    const b = await readBody(req), id = m[1], by = who(req);
+    const w = await ({ request: () => requestStory(id, b.note, by), 'fix-story': () => fixStory(id, b.note, by), 'cut-image': () => setCutImage(id, b.cutId, b.imageId, by), 'approve-story': () => approveStory(id, b.method, by), method: () => setMethod(id, b.method, by), notes: () => saveNotes(id, b.notes, by), fix: () => fixVideo(id, b.note, by), approve: () => approveVideo(id, b.versions, b.subtitles !== false, by), 'subs-fix': () => fixSubtitles(id, b.note, by), 'subs-confirm': () => confirmSubtitles(id, by), final: () => finalConfirmVideo(id, by) }[m[2]])();
+    return send(res, 200, { work: w, state: state(req) });
+  }
+  m = /^\/api\/works\/([A-Za-z]+-\d+)\/video-upload$/.exec(p);
+  if (m && req.method === 'POST') {
+    const tmp = path.join(os.tmpdir(), `cc-upload-${Date.now()}`);
+    try { await streamToFile(req, tmp); const w = await uploadVideo(m[1], tmp, who(req)); return send(res, 200, { work: w, state: state(req) }); }
+    finally { fs.rmSync(tmp, { force: true }); }
   }
   // 레퍼런스
   if (p === '/api/refs/upload' && req.method === 'POST') {
@@ -162,7 +199,7 @@ async function route(req, res) {
     if (!isLocal(req) || process.platform !== 'darwin') return fail(res, 403, '폴더 열기는 Mac에서만 돼요.');
     const b = await readBody(req);
     const w = listWorks().find(x => x.id === String(b.id).toUpperCase());
-    const target = b.which === 'drive' ? w?.image?.final?.drive?.path : w?.image?.final?.folder;
+    const target = w?.type === 'video' ? (b.which === 'drive' ? w?.video?.final?.drive?.paths?.[Number(b.index) || 0] : w?.video?.final?.folders?.[Number(b.index) || 0]) : (b.which === 'drive' ? w?.image?.final?.drive?.path : w?.image?.final?.folder);
     if (!target || !fs.existsSync(target)) return fail(res, 404, '폴더를 찾을 수 없어요.');
     spawn('open', [target], { detached: true, stdio: 'ignore' }).unref();
     return send(res, 200, { ok: true });
@@ -186,14 +223,14 @@ async function route(req, res) {
   }
   if (p === '/ref-file' && req.method === 'GET') {
     let r; try { r = getRef(url.searchParams.get('id') || ''); } catch { return fail(res, 404, '파일이 없어요.'); }
-    return r.file ? sendFile(res, path.join(REF_DIR, r.file)) : fail(res, 404, '파일이 없는 레퍼런스예요.');
+    return r.file ? sendFile(res, path.join(REF_DIR, r.file), req) : fail(res, 404, '파일이 없는 레퍼런스예요.');
   }
   if (p === '/work-file' && req.method === 'GET') {
     const id = String(url.searchParams.get('id') || '').toUpperCase(), f = url.searchParams.get('f') || '';
     if (!/^[A-Z]+-\d+$/.test(id) || !/^[\w.-]+$/.test(f)) return fail(res, 400, '잘못된 파일이에요.');
     const file = path.join(WORK_DIR, id, f);
     if (f.endsWith('.svg')) { res.setHeader('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'"); }
-    return sendFile(res, file);
+    return sendFile(res, file, req);
   }
   if (p.startsWith('/api/')) return fail(res, 404, '없는 기능이에요.');
 

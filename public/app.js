@@ -1,9 +1,9 @@
-// contents controller 화면 (1단계: 브랜드 기준·문구 검사 / 2단계: 캘린더·캡션 / 3단계: 레퍼런스·이미지 제작)
+// contents controller 화면 (1단계: 브랜드 기준·문구 검사 / 2단계: 캘린더·캡션 / 3단계: 레퍼런스·이미지 / 4단계: 영상)
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 let S = null; // 서버에서 받은 상태
-const ui = { btab: 'brand', sku: 'GTCP', edit: null, images: {}, check: { text: '', account: 'GLOBAL', product: '', result: null }, week: null, newWork: null, workEdit: null, fixOpen: false, confirmDelete: false, refPick: null, draftPick: null, pins: {}, finalPick: new Set(), imgFixOpen: false, refDelete: null, busy: false };
+const ui = { btab: 'brand', sku: 'GTCP', edit: null, images: {}, check: { text: '', account: 'GLOBAL', product: '', result: null }, week: null, newWork: null, workEdit: null, fixOpen: false, confirmDelete: false, refPick: null, draftPick: null, pins: {}, finalPick: new Set(), imgFixOpen: false, refDelete: null, busy: false, upscale: 'higgsfield', vNotes: null, vFixOpen: null, versions: null, subsOn: true };
 
 async function api(path, body) {
   const r = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -28,9 +28,9 @@ const ICON = {
   brand: '<path d="M12 3l8 4v5c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V7z"/>',
   check: '<path d="M4 12l5 5L20 6"/>'
 };
-const NAV = [['home', '홈'], ['calendar', '캘린더'], ['refs', '레퍼런스'], ['image', '이미지'], ['brand', '브랜드 기준'], ['check', '문구 검사'], ['video', '영상', 1], ['html', 'HTML', 1]];
+const NAV = [['home', '홈'], ['calendar', '캘린더'], ['refs', '레퍼런스'], ['image', '이미지'], ['brand', '브랜드 기준'], ['check', '문구 검사'], ['video', '영상'], ['html', 'HTML', 1]];
 const myTurn = () => S.works.filter(w => workState(w).c === 'st-you');
-const badge = k => k === 'home' ? myTurn().length : k === 'brand' ? S.proposals.length : k === 'image' ? S.works.filter(w => w.type === 'image' && workState(w).c === 'st-you').length : k === 'refs' ? S.refs.filter(r => r.status === 'wait').length : 0;
+const badge = k => k === 'home' ? myTurn().length : k === 'brand' ? S.proposals.length : k === 'image' ? S.works.filter(w => w.type === 'image' && workState(w).c === 'st-you').length : k === 'video' ? S.works.filter(w => w.type === 'video' && workState(w).c === 'st-you').length : k === 'refs' ? S.refs.filter(r => r.status === 'wait').length : 0;
 function renderNav(cur) {
   $('#nav').innerHTML = NAV.map(([k, t, soon]) => `<a href="#${k}" ${k === cur ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round">${ICON[k]}</svg><span>${t}</span>${badge(k) ? `<span class="count">${badge(k)}</span>` : soon ? '<span class="soonmark">준비 중</span>' : ''}</a>`).join('');
 }
@@ -46,12 +46,12 @@ const md = s => { const d = parseYmd(s); return `${d.getMonth() + 1}/${d.getDate
 const DOW = ['월', '화', '수', '목', '금', '토', '일'];
 const accLabel = w => w.account === 'SHOP' ? w.store : w.account;
 function workState(w) {
-  const im = w.image?.stage || 'none';
+  const im = w.image?.stage || 'none', vs = w.video?.stage || 'none', sub = w.video?.subs?.status || 'none';
   const cap = w.account === 'SHOP' ? 'none' : w.caption.status;
-  if (cap === 'review' || ['draft_review', 'result_review'].includes(im)) return { t: '내 차례', c: 'st-you' };
-  if (['requested', 'fix'].includes(cap) || ['draft_requested', 'draft_fix', 'make', 'make_fix'].includes(im)) return { t: 'Claude 차례', c: 'st-claude' };
-  if (im === 'finalizing') return { t: '처리 중', c: 'st-claude' };
-  if (w.type === 'image' ? im === 'done' : cap === 'confirmed') return { t: '완료', c: 'st-done' };
+  if (cap === 'review' || ['draft_review', 'result_review'].includes(im) || ['story_review', 'edit_me', 'result_review'].includes(vs) || sub === 'review' || (vs === 'video_ok' && (sub === 'confirmed' || w.video?.subs?.off))) return { t: '내 차례', c: 'st-you' };
+  if (['requested', 'fix'].includes(cap) || ['draft_requested', 'draft_fix', 'make', 'make_fix', 'upscale'].includes(im) || ['story_requested', 'story_fix', 'make', 'make_fix'].includes(vs) || ['requested', 'fix'].includes(sub)) return { t: 'Claude 차례', c: 'st-claude' };
+  if (im === 'finalizing' || vs === 'finalizing') return { t: '처리 중', c: 'st-claude' };
+  if (w.type === 'image' ? im === 'done' : w.type === 'video' ? vs === 'done' : cap === 'confirmed') return { t: '완료', c: 'st-done' };
   return { t: '기획', c: 'st-plan' };
 }
 const stateChip = w => { const s = workState(w); return `<span class="chip ${s.c}">${s.t}</span>`; };
@@ -197,7 +197,7 @@ function vWork(id) {
   return `<div class="row"><a class="btn sm" href="#calendar">‹ 캘린더</a></div>` + head(esc(w.title), `${w.id} · ${S.types[w.type].label} · ${md(w.date)} 게시`) + `
   <section class="panel"><div class="panel-h"><h2>기획</h2>${E ? '<span class="chip st-warn">수정 중</span>' : '<button class="btn sm" data-act="weopen">수정</button>'}</div>${plan}</section>
   ${refsPanel(w)}
-  ${w.type === 'image' ? imagePanel(w) : `<section class="panel"><div class="panel-h"><h2>${S.types[w.type].label} 제작</h2><span class="chip st-plan">준비 중</span></div><p class="small muted" style="margin:0">${make}</p></section>`}
+  ${w.type === 'image' ? imagePanel(w) : w.type === 'video' ? videoPanel(w) : `<section class="panel"><div class="panel-h"><h2>${S.types[w.type].label} 제작</h2><span class="chip st-plan">준비 중</span></div><p class="small muted" style="margin:0">${make}</p></section>`}
   ${captionPanel(w)}
   <section class="panel"><div class="panel-h"><h2>기록</h2></div>${w.log.slice(0, 12).map(l => `<div class="check" style="min-height:36px"><span class="small muted" style="width:120px;flex:none">${day(l.at)}</span><span class="small">${esc(l.what)}</span><span class="spacer"></span><span class="small muted">${esc(l.by)}</span></div>`).join('')}</section>
   <div class="row">${ui.confirmDelete ? `<span class="small" style="color:var(--red)">${w.id}를 지울까요? 되돌릴 수 없어요.</span><button class="btn" data-act="delno">취소</button><button class="btn" data-act="delyes" style="border-color:var(--red);color:var(--red)">지우기</button>` : '<button class="btn sm" data-act="delask">작업 지우기</button>'}</div>`;
@@ -369,9 +369,9 @@ function imagePanel(w) {
   if (im.stage === 'none') body = `<p class="small" style="margin:0 0 12px">먼저 Claude가 컴퓨터로 그린 구도 시안을 보내요. 크레딧이 들지 않아요. 고른 구도로만 실제 이미지를 만들어요.</p>
     <label class="small">시안 방향 (선택)<textarea id="img-note" placeholder="예: 제품을 크게, 아침 햇살, 손이 나오는 컷"></textarea></label>
     <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn primary" data-img="request">구도 시안 맡기기</button></div>`;
-  else if (['draft_requested', 'draft_fix', 'make', 'make_fix'].includes(im.stage)) {
-    const fix = im.fixes?.[0];
-    body = `<div class="status"><span class="dot"></span><div class="small">${esc(label)}.${im.stage.startsWith('make') ? ' Higgsfield로 만들기 전에 Claude가 예상 크레딧을 먼저 알려 드려요.' : ''}${fix && im.stage.endsWith('fix') ? `<div class="muted" style="margin-top:4px">수정 요청: ${esc(fix.note || '')}${fix.pins?.length ? ` (핀 ${fix.pins.reduce((a, x) => a + x.pins.length, 0)}개)` : ''}</div>` : ''}</div></div>${cmdBox()}`;
+  else if (['draft_requested', 'draft_fix', 'make', 'make_fix', 'upscale'].includes(im.stage)) {
+    const fix = im.stage === 'upscale' ? null : im.fixes?.[0];
+    body = `<div class="status"><span class="dot"></span><div class="small">${esc(label)}.${im.stage.startsWith('make') || im.stage === 'upscale' ? ' Higgsfield를 쓰기 전에 Claude가 예상 크레딧을 먼저 알려 드려요.' : ''}${im.stage === 'upscale' ? ` 업스케일이 끝나면 바로 최종 저장까지 진행돼요. (${im.upscale.ids.join(', ')})` : ''}${fix && im.stage.endsWith('fix') ? `<div class="muted" style="margin-top:4px">수정 요청: ${esc(fix.note || '')}${fix.pins?.length ? ` (핀 ${fix.pins.reduce((a, x) => a + x.pins.length, 0)}개)` : ''}</div>` : ''}</div></div>${cmdBox()}`;
   } else if (im.stage === 'draft_review') {
     const pick = ui.draftPick || im.drafts[0]?.id;
     body = `<p class="small muted" style="margin:0 0 12px">하나를 고르고, 생성할 때 바랄 점을 적어요. 마음에 드는 게 없으면 수정 요청을 보내요.</p>
@@ -386,6 +386,8 @@ function imagePanel(w) {
         <label class="small" style="display:flex;gap:8px;align-items:center;min-height:44px"><input type="checkbox" data-final="${r.id}" ${ui.finalPick.has(r.id) ? 'checked' : ''}> ${r.id} 최종으로 쓰기</label>
         <div class="notes">${pins.map((p, i) => `<div class="note"><span class="n">${i + 1}</span><input type="text" id="pin-${r.id}-${i}" data-pin="${r.id}" data-i="${i}" value="${esc(p.note)}" placeholder="고칠 점"><button class="btn sm" data-pindel="${r.id}" data-i="${i}" aria-label="${i + 1}번 핀 지우기">지우기</button></div>`).join('')}</div></div>`; }).join('')}</div>
       <label class="small" style="display:block;margin-top:16px">전체 메모 (선택)<textarea id="imgfix-note" placeholder="예: 전체적으로 조금 더 밝게"></textarea></label>
+      ${(() => { const small = im.results.filter(r => ui.finalPick.has(r.id) && r.width && r.width < 1080); return small.length ? `<div class="cautionbox"><b>${small.map(r => `${r.id} (${r.width}×${r.height})`).join(', ')}</b>는 가로 1080px보다 작아요. 최종 컨펌 때 어떻게 할까요?
+        <div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;color:var(--ink)">${[['higgsfield', 'Higgsfield로 업스케일 (크레딧 사용, Claude 차례가 한 번 더 생겨요)'], ['local', '프로그램에서 확대 (무료, 조금 덜 선명)'], ['none', '원본 크기 그대로']].map(([k, t]) => `<label style="display:flex;gap:8px;align-items:center;min-height:36px"><input type="radio" name="upscale" value="${k}" data-upscale="${k}" ${ui.upscale === k ? 'checked' : ''}> ${t}</label>`).join('')}</div></div>` : ''; })()}
       <div class="row" style="margin-top:12px"><button class="btn" data-img="fixresults" ${im.stage === 'finalizing' ? 'disabled' : ''}>수정 요청 보내기</button><span class="spacer"></span><button class="btn primary" data-img="final" ${im.stage === 'finalizing' || ui.busy ? 'disabled' : ''}>${im.stage === 'finalizing' ? '처리 중…' : '최종 컨펌'}</button></div>
       <p class="small muted" style="margin:8px 0 0">최종 컨펌하면 용량 최적화(JPG · 가로 1080px) → Mac 폴더 저장 → Google Drive 복사가 자동으로 진행돼요.</p>`;
   } else if (im.stage === 'done') {
@@ -412,6 +414,112 @@ function savePinsSoon(w, resultId) {
   pinTimer[resultId] = setTimeout(() => api(`/api/works/${w.id}/image-pins`, { resultId, pins: ui.pins[resultId] }).then(r => { S = r.state; }).catch(e => toast(e.message)), 600);
 }
 
+/* ---------- 영상 제작 ---------- */
+const fmtT = s => { const v = Math.max(0, Number(s) || 0); return `${Math.floor(v / 60)}:${(v % 60).toFixed(1).padStart(4, '0')}`; };
+function vNotesOf(w) { return ui.vNotes || w.video.notes || []; }
+let vNotesTimer = null;
+function saveVNotesSoon(w) { clearTimeout(vNotesTimer); vNotesTimer = setTimeout(() => api(`/api/works/${w.id}/video-notes`, { notes: ui.vNotes }).then(r => { S = r.state; }).catch(e => toast(e.message)), 600); }
+function cutRefs(w, i) {
+  const part = `cut:${i}`;
+  const list = S.refs.filter(r => r.links.some(l => l.work === w.id && l.part === part));
+  return `<div class="row small" style="margin-top:4px">${list.map(r => `<span class="chip acc">${esc(r.source)} · ${esc(r.memo || r.title)}<button class="x" data-unref="${r.id}|${w.id}|${part}" aria-label="연결 해제">×</button></span>`).join('')}<button class="btn sm" data-refpick="${w.id}|${part}" style="min-height:32px">+ 레퍼런스</button></div>${refPicker(w.id, part)}`;
+}
+function videoPanel(w) {
+  const v = w.video || { stage: 'none', videos: [], notes: [], subs: { status: 'none' }, versions: [w.account] };
+  const label = S.videoStage[v.stage];
+  const vid = v.videos?.[0];
+  const p = prodBy(w.product);
+  let body = '';
+  if (v.stage === 'none') body = `<p class="small" style="margin:0 0 12px">먼저 Claude가 컷 구성(스토리보드)을 보내요. 확인한 뒤에 편집을 시작해요.</p>
+    <label class="small">스토리보드 방향 (선택)<textarea id="vid-note" placeholder="예: 15초, 첫 2초에 텍스처 클로즈업, 마지막에 로고"></textarea></label>
+    <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn primary" data-vid="request">스토리보드 맡기기</button></div>`;
+  else if (['story_requested', 'story_fix', 'make', 'make_fix'].includes(v.stage)) {
+    const fix = v.fixes?.[0];
+    body = `<div class="status"><span class="dot"></span><div class="small">${esc(label)}.${v.stage.startsWith('make') ? ' Higgsfield 영상 생성은 Claude가 예상 크레딧을 먼저 알려 드려요.' : ''}${fix && v.stage.endsWith('fix') ? `<div class="muted" style="margin-top:4px">수정 요청: ${esc(fix.note || '')}${fix.notes?.length ? ` (타임라인 메모 ${fix.notes.length}개)` : ''}</div>` : ''}</div></div>${cmdBox()}
+      ${v.stage.startsWith('make') ? '<div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn sm" data-vmethod="capcut">CapCut에서 직접 편집으로 바꾸기</button></div>' : ''}`;
+  } else if (v.stage === 'story_review') {
+    const imgs = S.works.filter(x => x.type === 'image' && x.id !== w.id && (x.image?.results?.length || x.image?.final));
+    body = `<p class="small muted" style="margin:0 0 12px">${v.story.cuts.length}컷 · ${fmtT(v.story.cuts[v.story.cuts.length - 1].end)}${v.story.note ? ` · Claude: ${esc(v.story.note)}` : ''}</p>
+      <div class="cuts">${v.story.cuts.map((c, i) => `<div class="cut"><div class="cth">${c.sketch ? `<img src="${workFile(w, c.sketch)}" alt="${c.id} 스케치" style="width:100%;height:100%;object-fit:contain;background:#fff">` : `<div style="display:grid;place-items:center;height:100%;font-size:12px;color:var(--muted)">${c.id}</div>`}</div>
+        <div style="min-width:0;display:flex;flex-direction:column;gap:4px"><div class="row"><b class="small">${c.id}</b><span class="code">${fmtT(c.start)}–${fmtT(c.end)}</span>${c.camera ? `<span class="small muted">${esc(c.camera)}</span>` : ''}</div>
+          <div class="small">${esc(c.desc)}</div>${c.text ? `<div class="small">${esc(c.text)}</div><div class="small muted">${esc(c.back)}</div>` : ''}
+          <label class="small muted" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">이미지 작업으로 시작<select class="btn" data-cutimg="${c.id}" style="min-height:36px;flex:1;min-width:0"><option value="">없음</option>${imgs.map(x => `<option value="${x.id}" ${c.fromImage === x.id ? 'selected' : ''}>${x.id} · ${esc(x.title)}</option>`).join('')}</select></label>
+          ${cutRefs(w, i)}</div></div>`).join('')}</div>
+      ${ui.vFixOpen === 'story' ? `<label class="small" style="display:block;margin-top:16px">스토리보드를 어떻게 고칠까요?<textarea id="vstory-note" placeholder="예: C2를 더 짧게, 마지막에 제품 클로즈업 추가"></textarea></label><div class="row" style="margin-top:12px"><button class="btn" data-vid="fixcancel">취소</button><span class="spacer"></span><button class="btn primary" data-vid="fixstory">수정 요청 보내기</button></div>`
+        : `<div class="row" style="margin-top:16px"><button class="btn" data-vid="fixopen-story">수정 요청</button><span class="spacer"></span><button class="btn" data-vapprove="capcut">승인 · CapCut에서 내가 편집</button><button class="btn primary" data-vapprove="claude">승인 · Claude가 편집</button></div>`}`;
+  } else if (v.stage === 'edit_me') {
+    const fix = v.fixes?.[0]?.kind === 'video' && vid ? v.fixes[0] : null;
+    body = `<p class="small" style="margin:0 0 12px">CapCut에서 편집해서 내보낸 영상(mp4·mov)을 올려 주세요. <b>자막은 넣지 마세요.</b> 나라별 자막은 프로그램이 입혀요.</p>
+      ${fix ? `<div class="cautionbox" style="margin:0 0 12px">고칠 점: ${esc(fix.note || '')}<ul style="margin:4px 0 0;padding-left:20px">${fix.notes.map(n => `<li>${fmtT(n.t)}${n.t2 ? `–${fmtT(n.t2)}` : ''} ${esc(n.text)}</li>`).join('')}</ul></div>` : ''}
+      <details class="inci"><summary>스토리보드 보기 (${v.story.cuts.length}컷)</summary>${v.story.cuts.map(c => `<p style="font-size:14px;color:var(--ink);margin:4px 0">${c.id} ${fmtT(c.start)}–${fmtT(c.end)} · ${esc(c.desc)}${c.fromImage ? ` · ${c.fromImage}` : ''}</p>`).join('')}</details>
+      <div class="drop mini" data-vdrop="${w.id}" style="margin-top:12px"><span class="small">영상 파일을 여기에 끌어다 놓거나</span><div class="addbar"><label class="btn sm primary" for="vfile-${w.id}">영상 파일 고르기</label><input type="file" id="vfile-${w.id}" data-vfile="${w.id}" accept="video/*" hidden><span class="spacer"></span><button class="btn sm" data-vmethod="claude">Claude에게 편집 맡기기</button></div></div>`;
+  } else if (v.stage === 'result_review') {
+    const notes = vNotesOf(w);
+    const cuts = v.story?.cuts || [];
+    const markets = ['GLOBAL', 'JP', 'EU'].filter(a => p.markets[S.accounts[a].market]);
+    const versions = ui.versions || v.versions || [w.account];
+    body = `${vid.note ? `<p class="small" style="margin:0 0 12px">${vid.source === 'claude' ? 'Claude' : '나'}: ${esc(vid.note)}</p>` : ''}
+      <div class="grid g-main"><div>
+        <video id="vp" src="${workFile(w, vid.file)}" controls playsinline preload="metadata" style="width:100%;max-height:560px;background:#000;border-radius:11px"></video>
+        <div class="timeline" id="vtl" data-dur="${vid.duration}" role="slider" aria-label="타임라인" tabindex="0">
+          ${cuts.map(c => `<div class="seg" style="left:${c.start / vid.duration * 100}%;width:calc(${Math.max(0, Math.min(c.end, vid.duration) - c.start) / vid.duration * 100}% - 4px);margin-left:2px">${c.id}</div>`).join('')}
+          ${notes.map(n => `<span class="mk" style="left:${n.t / vid.duration * 100}%"></span>`).join('')}<div class="head" id="vhead" style="left:0"></div></div>
+        <div class="ticks"><span>0:00</span><span>${fmtT(vid.duration / 2)}</span><span>${fmtT(vid.duration)}</span></div>
+        <div class="row" style="margin-top:12px"><input type="text" id="vnote" placeholder="지금 지점에 남길 수정사항" style="flex:1;min-width:0"><button class="btn sm primary" data-vid="addnote">메모 추가</button></div>
+        <p class="small muted" style="margin:8px 0 0">${vid.duration.toFixed(1)}초 · ${vid.width}×${vid.height}${vid.audio ? '' : ' · 소리 없음'}</p>
+      </div><div>
+        <h3>수정사항 <span class="small muted" style="font-weight:400">${notes.length}개</span></h3>
+        <div class="notes" style="margin-top:8px">${notes.map((n, i) => `<div class="note" style="grid-template-columns:auto minmax(0,1fr) auto"><button class="btn sm" data-vseek="${n.t}" style="min-height:36px" aria-label="${fmtT(n.t)}로 이동">${fmtT(n.t)}${n.t2 ? `–${fmtT(n.t2)}` : ''}</button><input type="text" id="vn-${i}" data-vnote="${i}" value="${esc(n.text)}" placeholder="고칠 점"><span class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sm" data-vrange="${i}" title="지금 지점을 구간 끝으로" style="min-height:36px">끝</button><button class="btn sm" data-vdel="${i}" style="min-height:36px" aria-label="메모 지우기">×</button></span></div>`).join('') || '<p class="empty">재생하다가 고칠 곳에서 메모를 추가하세요.</p>'}</div>
+      </div></div>
+      ${ui.vFixOpen === 'video' ? `<label class="small" style="display:block;margin-top:16px">전체 메모 (선택)<textarea id="vfix-note" placeholder="예: 전체 길이 2초 줄이기"></textarea></label><div class="row" style="margin-top:12px"><button class="btn" data-vid="fixcancel">취소</button><span class="spacer"></span><button class="btn primary" data-vid="fixvideo">수정 요청 보내기 (${v.method === 'claude' ? 'Claude가 고쳐요' : 'CapCut에서 내가 고쳐요'})</button></div>`
+        : `<div class="panel" style="margin-top:16px;padding:16px;background:var(--fill);border:0"><h3>영상 컨펌 후 만들 버전</h3>
+          <div class="row" style="margin-top:8px">${markets.map(a => `<label class="small" style="display:flex;gap:8px;align-items:center;min-height:44px;margin-right:12px"><input type="checkbox" data-version="${a}" ${versions.includes(a) ? 'checked' : ''} ${a === w.account ? 'disabled' : ''}> ${a} · ${esc(S.accounts[a].lang)}</label>`).join('')}</div>
+          <label class="small" style="display:flex;gap:8px;align-items:center;min-height:44px"><input type="checkbox" id="subs-on" ${ui.subsOn ? 'checked' : ''}> 나라별 자막 넣기 (Claude는 글자만 쓰고, 영상에 입히는 건 프로그램이 해요)</label>
+          ${['GLOBAL', 'JP', 'EU'].filter(a => !p.markets[S.accounts[a].market]).length ? `<p class="small muted" style="margin:4px 0 0">판매하지 않는 시장(${['GLOBAL', 'JP', 'EU'].filter(a => !p.markets[S.accounts[a].market]).join(', ')})은 버전을 만들 수 없어요.</p>` : ''}</div>
+          <div class="row" style="margin-top:12px"><button class="btn" data-vid="fixopen-video">수정 요청</button><span class="spacer"></span><button class="btn primary" data-vid="approve">영상 컨펌</button></div>`}`;
+  } else if (v.stage === 'video_ok' || v.stage === 'finalizing') {
+    const sub = v.subs;
+    let subBody = '';
+    if (sub.off) subBody = '<p class="small muted" style="margin:0">자막 없이 만들어요.</p>';
+    else if (['requested', 'fix'].includes(sub.status)) subBody = `<div class="status"><span class="dot"></span><div class="small">${esc(S.subStatus[sub.status])} (${v.versions.join(', ')})${sub.status === 'fix' ? ` · 수정 요청: ${esc(sub.fixes[0]?.note)}` : ''}</div></div>${cmdBox()}`;
+    else subBody = v.versions.map(a => { const la = { GLOBAL: 'en', JP: 'ja', EU: 'fr' }[a]; const iss = sub.checks?.[a]?.issues || []; return `<h3 style="margin:16px 0 8px">${a} · ${esc(S.accounts[a].lang)}</h3>
+        <div class="tbl"><table class="subs"><thead><tr><th>시간</th><th>원문</th><th>한국어 역번역</th></tr></thead><tbody>${(sub.tracks[a] || []).map(sg => `<tr><td class="tc">${fmtT(sg.start)}–${fmtT(sg.end)}</td><td lang="${la}">${esc(sg.text)}</td><td>${esc(sg.back)}</td></tr>`).join('')}</tbody></table></div>
+        ${iss.map(i => `<div class="check"><span class="ic" style="background:var(--yellow-soft);color:var(--yellow)">!</span><span>${esc(i.message)}</span></div>`).join('')}`; }).join('')
+      + (sub.status === 'review' ? (ui.vFixOpen === 'subs' ? `<label class="small" style="display:block;margin-top:16px">자막을 어떻게 고칠까요? (한국어로)<textarea id="vsub-note" placeholder="예: JP 2번 줄을 더 짧게"></textarea></label><div class="row" style="margin-top:12px"><button class="btn" data-vid="fixcancel">취소</button><span class="spacer"></span><button class="btn primary" data-vid="fixsubs">수정 요청 보내기</button></div>`
+        : `<div class="row" style="margin-top:16px"><button class="btn" data-vid="fixopen-subs">수정 요청</button><span class="spacer"></span><button class="btn primary" data-vid="confirmsubs">자막 컨펌</button></div>`) : '');
+    const ready = sub.off || sub.status === 'confirmed';
+    body = `${v.error ? `<div class="warnbox" style="margin:0 0 12px">${esc(v.error)}</div>` : ''}<video src="${workFile(w, vid.file)}" controls playsinline preload="metadata" style="width:100%;max-width:320px;max-height:480px;background:#000;border-radius:11px;display:block"></video>
+      <h3 style="margin-top:16px">자막 <span class="chip ${sub.status === 'confirmed' ? 'st-done' : sub.status === 'review' ? 'st-you' : 'st-claude'}" style="margin-left:4px">${esc(sub.off ? '자막 없음' : S.subStatus[sub.status])}</span></h3>${subBody}
+      ${v.stage === 'finalizing' ? `<div class="status" style="margin-top:16px"><span class="dot warn"></span><div class="small">나라별 영상을 만드는 중… (${v.job?.done || 0}/${v.job?.total || 0}) 영상 길이에 따라 몇 분 걸려요. 이 화면을 닫아도 계속 진행돼요.</div></div>`
+        : ready ? `<div class="row" style="margin-top:16px"><span class="small muted">${v.versions.join(', ')} 버전 · 자막 입히기 → 용량 최적화(H.264 · 가로 1080px) → Mac 폴더 → Google Drive</span><span class="spacer"></span><button class="btn primary" data-vid="final">최종 컨펌</button></div>` : ''}`;
+  } else if (v.stage === 'done') {
+    const f = v.final;
+    body = `<ol class="pipe">
+      <li class="ok"><span class="pi">✓</span><div style="min-width:0"><b class="small">나라별 영상 · 용량 최적화</b><div class="small muted">${f.outputs.map(o => `${esc(o.file)} · ${fmtSize(o.before)} → ${fmtSize(o.after)} · ${o.width}×${o.height}`).join('<br>')}</div></div></li>
+      <li class="ok"><span class="pi">✓</span><div style="min-width:0"><b class="small">내 Mac에 저장</b><div class="small muted path">${f.folders.map(esc).join('<br>')}</div></div></li>
+      <li class="${f.drive.status === 'copied' ? 'ok' : ''}"><span class="pi">${f.drive.status === 'copied' ? '✓' : '–'}</span><div style="min-width:0"><b class="small">Google Drive</b><div class="small muted path">${f.drive.status === 'copied' ? f.drive.paths.map(esc).join('<br>') : f.drive.status === 'missing' ? 'Drive 폴더를 찾을 수 없어서 복사하지 못했어요.' : 'Drive 복사가 꺼져 있어요 (홈 > 완성본 저장).'}</div></div></li></ol>
+      <div class="row" style="margin-top:12px">${S.info.local ? f.folders.map((d, i) => `<button class="btn sm" data-open="mac" data-index="${i}">${esc(d.split('/').slice(-2, -1)[0])} 폴더 열기</button>`).join('') : ''}<span class="spacer"></span><button class="btn sm" data-vid="again">새 버전 만들기</button></div>`;
+  }
+  return `<section class="panel"><div class="panel-h"><h2>영상 제작${v.method && v.stage !== 'none' ? ` <span class="small muted" style="font-weight:400">${v.method === 'claude' ? 'Claude가 편집' : 'CapCut에서 내가 편집'}</span>` : ''}</h2><span class="chip ${workState({ ...w, caption: { status: 'none' } }).c}">${esc(label)}</span></div>${body}</section>`;
+}
+function vVideo() {
+  const ws = S.works.filter(w => w.type === 'video');
+  const groups = [['내 차례', w => workState(w).c === 'st-you'], ['Claude 차례', w => workState(w).c === 'st-claude'], ['기획', w => workState(w).c === 'st-plan'], ['완료', w => workState(w).c === 'st-done']];
+  return head('영상', '스토리보드 → 편집(Claude 또는 CapCut) → 타임라인 검수 → 나라별 자막 → 최종 컨펌 순서로 진행해요. 새 영상 작업은 캘린더에서 만들어요.') + `
+  <div class="row"><span class="spacer"></span><a class="btn primary" href="#calendar">캘린더에서 새 작업</a></div>
+  ${groups.map(([t, f]) => { const list = ws.filter(f); return list.length ? `<section class="panel"><div class="panel-h"><h2>${t} <span class="small muted" style="font-weight:400">${list.length}건</span></h2></div><div class="tasks">${list.map(workRow).join('')}</div></section>` : ''; }).join('') || '<p class="empty">아직 영상 작업이 없어요.</p>'}`;
+}
+async function uploadVideoFile(workId, file) {
+  if (!file) return;
+  ui.busy = true; render(); toast(`영상을 올리는 중… (${fmtSize(file.size)})`);
+  try {
+    const r = await fetch(`/api/works/${workId}/video-upload`, { method: 'POST', headers: { 'content-type': file.type || 'video/mp4' }, body: file });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || '올리지 못했어요.');
+    S = j.state; ui.vNotes = null; render(); toast('영상을 올렸어요. 재생하면서 검수해 주세요.');
+  } catch (e) { toast(e.message); } finally { ui.busy = false; render(); }
+}
+
 /* ---------- 문구 검사 ---------- */
 function vCheck() {
   const c = ui.check, r = c.result;
@@ -431,7 +539,6 @@ function vCheck() {
 
 /* ---------- 준비 중 화면 ---------- */
 const SOON = {
-  video: ['영상', '4단계', ['스토리보드 컨펌 → 제작 → 타임라인 구간 메모', '자막 3개 언어 + 역번역, 최종 컨펌 때 SRT 저장']],
   html: ['HTML', '5단계', ['자사몰(damtix.shop · damtix.eu) 섹션 구성 → 제작 → PC·모바일 미리보기 검수']]
 };
 function vSoon(k) {
@@ -440,7 +547,7 @@ function vSoon(k) {
 }
 
 /* ---------- 라우터 ---------- */
-const VIEWS = { home: vHome, calendar: vCalendar, refs: vRefs, image: vImage, brand: vBrand, check: vCheck };
+const VIEWS = { home: vHome, calendar: vCalendar, refs: vRefs, image: vImage, video: vVideo, brand: vBrand, check: vCheck };
 let cur = 'home';
 function render() {
   const h = location.hash.replace('#', '');
@@ -449,7 +556,7 @@ function render() {
   renderNav(cur === 'work' ? 'calendar' : cur);
   $('#view').innerHTML = wm ? vWork(wm[1].toUpperCase()) : VIEWS[cur] ? VIEWS[cur]() : vSoon(cur);
 }
-window.addEventListener('hashchange', () => { $('.rail').classList.remove('open'); $('#menuBtn').setAttribute('aria-expanded', 'false'); ui.edit = null; ui.workEdit = null; ui.fixOpen = false; ui.confirmDelete = false; ui.refPick = null; ui.draftPick = null; ui.pins = {}; ui.finalPick = new Set(); ui.imgFixOpen = false; ui.refDelete = null; render(); scrollTo(0, 0); refresh(); });
+window.addEventListener('hashchange', () => { $('.rail').classList.remove('open'); $('#menuBtn').setAttribute('aria-expanded', 'false'); ui.edit = null; ui.workEdit = null; ui.fixOpen = false; ui.confirmDelete = false; ui.refPick = null; ui.draftPick = null; ui.pins = {}; ui.finalPick = new Set(); ui.imgFixOpen = false; ui.refDelete = null; ui.vNotes = null; ui.vFixOpen = null; ui.versions = null; ui.subsOn = true; render(); scrollTo(0, 0); refresh(); });
 
 async function run(fn) { try { await fn(); } catch (e) { toast(e.message); } }
 function copy(text, done) {
@@ -504,7 +611,7 @@ document.addEventListener('click', e => {
   if (d.refdel) return run(async () => { S = (await api(`/api/refs/${d.refdel}/delete`, {})).state; ui.refDelete = null; render(); toast('레퍼런스를 지웠어요.'); });
   if (d.draft) { ui.draftPick = d.draft; render(); return; }
   if (d.pindel) { const w = cw(); const r = w.image.results.find(x => x.id === d.pindel); ui.pins[r.id] = pinsOf(r).filter((_, i) => i !== Number(d.i)); render(); savePinsSoon(w, r.id); return; }
-  if (d.open) return run(async () => { await api('/api/open', { id: wid(), which: d.open === 'drive' ? 'drive' : 'mac' }); });
+  if (d.open) return run(async () => { await api('/api/open', { id: wid(), which: d.open === 'drive' ? 'drive' : 'mac', index: Number(d.index) || 0 }); });
   if (d.act === 'setdrive') return run(async () => { S = (await api('/api/config', { driveFolder: $('#drivesel').value })).state; render(); toast($('#drivesel')?.value ? 'Google Drive 폴더를 저장했어요.' : 'Google Drive 복사를 껐어요.'); });
   if (d.img) {
     const w = cw(); if (!w) return;
@@ -517,15 +624,39 @@ document.addEventListener('click', e => {
       fixdrafts: ['image-fix-drafts', { note: $('#draftfix-note')?.value }, '시안 수정 요청을 보냈어요.'],
       pick: ['image-pick', { draftId: ui.draftPick || im.drafts?.[0]?.id, note: $('#pick-note')?.value }, '이 시안으로 이미지 만들기를 맡겼어요.'],
       fixresults: ['image-fix', { note: $('#imgfix-note')?.value }, '수정 요청을 Claude에게 보냈어요.'],
-      final: ['image-final', { resultIds: [...ui.finalPick] }, '최종 처리를 마쳤어요.']
+      final: ['image-final', { resultIds: [...ui.finalPick], upscale: (w.image.results.some(r => ui.finalPick.has(r.id) && r.width && r.width < 1080)) ? ui.upscale : 'none' }, ui.upscale === 'higgsfield' && w.image.results.some(r => ui.finalPick.has(r.id) && r.width && r.width < 1080) ? 'Higgsfield 업스케일을 Claude에게 맡겼어요. 끝나면 바로 저장돼요.' : '최종 처리를 마쳤어요.']
     };
     const c = calls[d.img]; if (!c) return;
     if (d.img === 'final' && !ui.finalPick.size) { toast('최종으로 쓸 이미지를 체크해 주세요.'); return; }
     return run(async () => {
       if (d.img === 'final') { ui.busy = true; render(); toast('최적화해서 저장하는 중…'); }
+      if (d.img === 'fixresults' || d.img === 'final') { for (const [rid, pins] of Object.entries(ui.pins)) { clearTimeout(pinTimer[rid]); await api(`/api/works/${w.id}/image-pins`, { resultId: rid, pins }); } }
       try { S = (await api(`/api/works/${w.id}/${c[0]}`, c[1])).state; } finally { ui.busy = false; }
       ui.imgFixOpen = false; ui.draftPick = null; ui.pins = {}; if (d.img === 'final') ui.finalPick = new Set(); render(); toast(c[2]);
     });
+  }
+  if (d.vid || d.vapprove || d.vmethod || d.vseek !== undefined || d.vrange !== undefined || d.vdel !== undefined) {
+    const w = cw(); if (!w) return;
+    const vp = $('#vp');
+    if (d.vseek !== undefined) { if (vp) { vp.currentTime = Number(d.vseek); vp.play?.().catch(() => {}); } return; }
+    if (d.vrange !== undefined) { const n = vNotesOf(w).map(x => ({ ...x })); const i = Number(d.vrange); const t = vp?.currentTime || 0; if (t > n[i].t) n[i].t2 = +t.toFixed(2); else toast('구간 끝은 시작보다 뒤여야 해요. 재생 위치를 옮긴 뒤 눌러 주세요.'); ui.vNotes = n; render(); saveVNotesSoon(w); return; }
+    if (d.vdel !== undefined) { ui.vNotes = vNotesOf(w).filter((_, i) => i !== Number(d.vdel)); render(); saveVNotesSoon(w); return; }
+    if (d.vid === 'addnote') { const t = vp?.currentTime || 0; const txt = $('#vnote').value.trim(); if (!txt) { $('#vnote').focus(); return; } ui.vNotes = [...vNotesOf(w), { t: +t.toFixed(2), t2: null, text: txt }].sort((a, b) => a.t - b.t); render(); saveVNotesSoon(w); toast(`${fmtT(t)} 지점에 메모를 남겼어요.`); return; }
+    if (d.vid?.startsWith('fixopen-')) { ui.vFixOpen = d.vid.slice(8); render(); return; }
+    if (d.vid === 'fixcancel') { ui.vFixOpen = null; render(); return; }
+    const calls = {
+      request: ['video-request', { note: $('#vid-note')?.value }, '스토리보드를 Claude에게 맡겼어요.'],
+      again: ['video-request', { note: '' }, '새 버전 스토리보드를 Claude에게 맡겼어요.'],
+      fixstory: ['video-fix-story', { note: $('#vstory-note')?.value }, '스토리보드 수정 요청을 보냈어요.'],
+      fixvideo: ['video-fix', { note: $('#vfix-note')?.value }, w.video?.method === 'claude' ? '수정 요청을 Claude에게 보냈어요.' : 'CapCut에서 고쳐서 다시 올려 주세요.'],
+      approve: ['video-approve', { versions: ui.versions || w.video?.versions, subtitles: ui.subsOn }, ui.subsOn ? '영상을 컨펌했어요. 자막을 Claude에게 맡겼어요.' : '영상을 컨펌했어요.'],
+      fixsubs: ['video-subs-fix', { note: $('#vsub-note')?.value }, '자막 수정 요청을 보냈어요.'],
+      confirmsubs: ['video-subs-confirm', {}, '자막을 컨펌했어요.'],
+      final: ['video-final', {}, '나라별 영상을 만드는 중이에요. 몇 분 걸릴 수 있어요.']
+    };
+    const c = d.vapprove ? ['video-approve-story', { method: d.vapprove }, d.vapprove === 'claude' ? '승인했어요. Claude가 편집할 차례예요.' : '승인했어요. CapCut에서 편집해서 올려 주세요.'] : d.vmethod ? ['video-method', { method: d.vmethod }, d.vmethod === 'claude' ? 'Claude가 편집하도록 바꿨어요.' : 'CapCut에서 직접 편집하도록 바꿨어요.'] : calls[d.vid];
+    if (!c) return;
+    return run(async () => { if (ui.vNotes && ['fixvideo', 'approve'].includes(d.vid)) { clearTimeout(vNotesTimer); await api(`/api/works/${w.id}/video-notes`, { notes: ui.vNotes }); } S = (await api(`/api/works/${w.id}/${c[0]}`, c[1])).state; ui.vFixOpen = null; ui.vNotes = null; if (d.vid === 'approve') ui.versions = null; render(); toast(c[2]); });
   }
   if (d.act === 'menu') { const r = $('.rail'); const open = !r.classList.contains('open'); r.classList.toggle('open', open); t.setAttribute('aria-expanded', open); return; }
   if (d.btab) { ui.btab = d.btab; ui.edit = null; if (t.tagName === 'BUTTON') render(); return; }
@@ -546,6 +677,7 @@ document.addEventListener('click', e => {
 document.addEventListener('input', e => {
   const t = e.target;
   if (ui.newWork && t.id?.startsWith('nw-')) { const k = { 'nw-title': 'title', 'nw-memo': 'memo', 'nw-date': 'date' }[t.id]; if (k) ui.newWork[k] = t.value; }
+  if (t.dataset.vnote !== undefined) { const w = S.works.find(x => x.id === dropWork()); const n = vNotesOf(w).map(x => ({ ...x })); n[Number(t.dataset.vnote)].text = t.value; ui.vNotes = n; saveVNotesSoon(w); }
   if (t.dataset.pin) { const w = S.works.find(x => x.id === (/^#work-([A-Za-z]+-\d+)$/.exec(location.hash) || [])[1]?.toUpperCase()); const r = w.image.results.find(x => x.id === t.dataset.pin); const pins = pinsOf(r).map(p => ({ ...p })); pins[Number(t.dataset.i)].note = t.value; ui.pins[r.id] = pins; savePinsSoon(w, r.id); }
   if (t.dataset.f && ui.edit) ui.edit.draft[t.dataset.f] = t.type === 'checkbox' ? t.checked : t.value;
   if (t.id === 'ereason' && ui.edit) ui.edit.reason = t.value;
@@ -555,20 +687,26 @@ document.addEventListener('change', e => { const t = e.target;
   if (t.dataset.refmemo !== undefined) { run(async () => { S = (await api(`/api/refs/${t.dataset.refmemo}/update`, { memo: t.value })).state; toast('가져올 점을 저장했어요.'); }); }
   if (t.dataset.reflink && t.value) { const work = t.value; run(async () => { S = (await api(`/api/refs/${t.dataset.reflink}/link`, { work, part: '' })).state; render(); toast(`${work}에 연결했어요.`); }); }
   if (t.dataset.filefor !== undefined && t.files.length) { uploadFiles([...t.files], t.dataset.filefor); }
-  if (t.dataset.final) { t.checked ? ui.finalPick.add(t.dataset.final) : ui.finalPick.delete(t.dataset.final); }
+  if (t.dataset.final) { t.checked ? ui.finalPick.add(t.dataset.final) : ui.finalPick.delete(t.dataset.final); render(); }
+  if (t.dataset.upscale) { ui.upscale = t.dataset.upscale; }
+  if (t.dataset.cutimg !== undefined) { const w = S.works.find(x => x.id === dropWork()); if (w) run(async () => { S = (await api(`/api/works/${w.id}/video-cut-image`, { cutId: t.dataset.cutimg, imageId: t.value })).state; render(); toast(t.value ? `${t.dataset.cutimg}에 ${t.value}를 넣었어요.` : `${t.dataset.cutimg}에서 이미지를 뺐어요.`); }); }
+  if (t.dataset.version) { const w = S.works.find(x => x.id === dropWork()); const set = new Set(ui.versions || w.video.versions || [w.account]); t.checked ? set.add(t.dataset.version) : set.delete(t.dataset.version); set.add(w.account); ui.versions = [...set]; }
+  if (t.id === 'subs-on') ui.subsOn = t.checked;
+  if (t.dataset.vfile && t.files.length) uploadVideoFile(t.dataset.vfile, t.files[0]);
   if (ui.newWork && t.id?.startsWith('nw-')) { const k = { 'nw-type': 'type', 'nw-acc': 'acc', 'nw-prod': 'prod', 'nw-date': 'date' }[t.id]; if (k) ui.newWork[k] = t.value; if (t.id === 'nw-cap') ui.newWork.cap = t.checked; } if (t.dataset.f && ui.edit && t.type === 'checkbox') ui.edit.draft[t.dataset.f] = t.checked; });
 
 // 다른 곳(Claude 앱, 다른 기기)에서 바뀐 내용을 30초마다 반영. 수정 중일 때는 건드리지 않는다.
 function refresh() {
-  if (ui.edit || ui.workEdit || ui.fixOpen || ui.newWork || ui.imgFixOpen || ui.busy || Object.keys(ui.pins).length || document.hidden || ['TEXTAREA', 'INPUT', 'SELECT'].includes(document.activeElement?.tagName)) return;
+  if (ui.edit || ui.workEdit || ui.fixOpen || ui.newWork || ui.imgFixOpen || ui.vFixOpen || ui.busy || ui.vNotes || Object.keys(ui.pins).length || (cur === 'work' && $('#vp') && !$('#vp').paused) || document.hidden || ['TEXTAREA', 'INPUT', 'SELECT'].includes(document.activeElement?.tagName)) return;
   api('/api/state').then(s => { const pick = x => JSON.stringify([x.brand, x.products, x.proposals, x.history[0]?.id, x.info.claudeLastSeen, x.works.map(w => w.updatedAt), x.queue.length, x.refs.map(r => r.status + r.links.length)]); const changed = pick(s) !== pick(S); S = s; if (changed && cur !== 'check') render(); }).catch(() => {});
 }
 setInterval(refresh, 10000);
+setInterval(() => { if (S?.works.some(w => w.video?.stage === 'finalizing' || w.image?.stage === 'finalizing')) refresh(); }, 3000);
 window.addEventListener('focus', refresh);
 
 api('/api/state').then(s => { S = s; render(); }).catch(e => { $('#view').innerHTML = `<p class="loading">${esc(e.message)}</p>`; });
 
-document.addEventListener('keydown', e => { const t = e.target; if (t.dataset?.urlfor !== undefined && e.key === 'Enter') { e.preventDefault(); addUrl(t.value, t.dataset.urlfor); } });
+document.addEventListener('keydown', e => { const t = e.target; if (t.id === 'vnote' && e.key === 'Enter') { e.preventDefault(); document.querySelector('[data-vid="addnote"]')?.click(); return; } if (t.dataset?.urlfor !== undefined && e.key === 'Enter') { e.preventDefault(); addUrl(t.value, t.dataset.urlfor); } });
 // 끌어다 놓기와 붙여넣기: 레퍼런스 화면은 보관함에, 작업 화면은 그 작업에 연결
 const dropWork = () => cur === 'refs' ? '' : cur === 'work' ? (/^#work-([A-Za-z]+-\d+)$/.exec(location.hash) || [])[1]?.toUpperCase() : null;
 document.addEventListener('dragover', e => { if (dropWork() === null) return; e.preventDefault(); const z = e.target.closest?.('[data-drop]') || $('[data-drop]'); document.querySelectorAll('.drop.over').forEach(x => x !== z && x.classList.remove('over')); z?.classList.add('over'); });
@@ -576,7 +714,9 @@ document.addEventListener('dragleave', e => { document.querySelectorAll('.drop.o
 document.addEventListener('drop', e => {
   const work = dropWork(); if (work === null) return; e.preventDefault();
   document.querySelectorAll('.drop.over').forEach(x => x.classList.remove('over'));
-  const dt = e.dataTransfer; if (dt.files?.length) { uploadFiles([...dt.files], work); return; }
+  const dt = e.dataTransfer;
+  if (e.target.closest?.('[data-vdrop]') && dt.files?.length) { uploadVideoFile(work, dt.files[0]); return; }
+  if (dt.files?.length) { uploadFiles([...dt.files], work); return; }
   const u = dt.getData('text/uri-list') || dt.getData('text/plain'); if (u) addUrl(u.split('\n')[0], work);
 });
 document.addEventListener('paste', e => {
@@ -586,3 +726,7 @@ document.addEventListener('paste', e => {
   const tg = e.target; if (tg.tagName === 'INPUT' || tg.tagName === 'TEXTAREA') return;
   const txt = e.clipboardData?.getData('text/plain') || ''; if (/^https?:\/\//.test(txt.trim())) { e.preventDefault(); addUrl(txt, work); }
 });
+
+// 영상 재생 위치를 타임라인에 표시하고, 타임라인을 누르면 그 지점으로 이동
+document.addEventListener('timeupdate', e => { if (e.target.id !== 'vp') return; const h = $('#vhead'), tl = $('#vtl'); if (h && tl) h.style.left = `${(e.target.currentTime / Number(tl.dataset.dur)) * 100}%`; }, true);
+document.addEventListener('click', e => { const tl = e.target.closest?.('#vtl'); if (!tl) return; const r = tl.getBoundingClientRect(); const vp = $('#vp'); if (vp) vp.currentTime = (e.clientX - r.left) / r.width * Number(tl.dataset.dur); });
