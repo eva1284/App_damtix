@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>contents controller</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<form class="login panel" id="f">
+  <img src="/assets/damtix-logo.svg" alt="DAMTIX" class="brand-logo">
+  <h1 style="font-size:28px">contents controller</h1>
+  <p class="small muted" style="margin:0">Mac 화면의 홈 &gt; 폰에서 열기에 있는 6자리 접속 코드를 넣어 주세요.</p>
+  <input type="text" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="접속 코드 6자리" aria-label="접속 코드">
+  <button class="btn primary" type="submit">들어가기</button>
+  <p class="small" id="msg" style="margin:0;color:var(--red)" hidden></p>
+</form>
+<script>
+document.getElementById('f').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = document.getElementById('msg');
+  const r = await fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: document.getElementById('code').value }) });
+  if (r.ok) location.reload();
+  else { msg.textContent = (await r.json()).error; msg.hidden = false; }
+});
+</script>
+</body>
+</html>

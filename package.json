@@ -1,0 +1,20 @@
+{
+  "name": "contents-controller",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Damtix contents controller: 브랜드 기준과 SNS 콘텐츠 작업을 관리하고 Claude와 연결하는 내 Mac용 프로그램",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "mcp": "node mcp.js",
+    "connect-claude": "node scripts/connect-claude.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "source": "DAMTIX B2B Product Introduction (Final v2) – 2026.10",
+  "core": {
+    "slogan": "Aesthetic precision, brought to your routine. FROM SEOUL.",
+    "positioning": "청담 뷰티 클리닉에서 영감을 받은 홈 에스테틱 K-뷰티",
+    "target": "시간은 부족하지만 꾸준히 관리하고 싶은 30~50대",
+    "signature": "그린티 캘러스(차세포배양추출물). 잎 추출물이 아님"
+  },
+  "tone": {
+    "GLOBAL": "짧고 명확하게. 효과는 외관 표현으로만 (\"helps skin look …\")",
+    "JP": "정중하고 부드럽게. 약기법 56개 효능 범위 안에서만",
+    "EU": "세련되고 절제된 톤. 근거 없는 주장 금지 (EU 655/2013). 프랑스어만 사용"
+  },
+  "rules": {
+    "GLOBAL_ban": "treat, heal, repair, regenerate, cure, stimulate collagen, lifts skin, anti-aging",
+    "GLOBAL_alt": "helps skin look firmer",
+    "JP_ban": "再生, リフトアップ, 美白, シワ改善, たるみ改善, 治療",
+    "JP_alt": "肌を整える, 肌にハリを与える, 肌にうるおいを与える",
+    "EU_ban": "traiter, guérir, régénérer, répare, lifte la peau, anti-âge",
+    "EU_alt": "aide la peau à paraître plus ferme",
+    "ALL_ban": "실리콘 프리, silicone-free, 비건, vegan",
+    "ALL_alt": "기기는 스킨케어용 마사지 도구로만 소개"
+  },
+  "visual": {
+    "color": "무채색 중심 (블랙·화이트·그레이). 색은 제품·소품에서만",
+    "light": "(채워 주세요)",
+    "model": "(채워 주세요)",
+    "avoid": "(채워 주세요)"
+  }
+}
