@@ -305,7 +305,7 @@ dl.kv dd{margin:0;white-space:pre-line;overflow-wrap:anywhere}
 .status{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line)}
 .status:first-child{border-top:0;padding-top:0}
 .status .dot{flex:none;width:10px;height:10px;border-radius:9999px;margin-top:7px;background:var(--line-strong)}
-.status .dot.ok{background:var(--green)} .status .dot.warn{background:var(--yellow)}
+.status .dot.ok{background:var(--green)} .status .dot.warn{background:var(--yellow)} .status .dot.bad{background:var(--red)}
 .status code,.mono{font-family:var(--f-mono);font-size:12px;letter-spacing:0;overflow-wrap:anywhere}
 .imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin-top:8px}
 .imgs a{display:block;aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--fill)}

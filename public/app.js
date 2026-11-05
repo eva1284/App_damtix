@@ -102,6 +102,7 @@ function vHome() {
     <section class="panel"><div class="panel-h"><h2>완성본 저장</h2></div>
       <div class="status"><span class="dot ok"></span><div class="small" style="min-width:0">Mac: 이미지정리 안의 <b>${esc(i.finals.finalsFolder)}</b> 폴더<div class="small muted">계정 / 게시일_작업번호 폴더로 나눠 저장해요.</div></div></div>
       <div class="status"><span class="dot ${i.finals.driveFolder ? (i.finals.driveExists ? 'ok' : 'warn') : 'warn'}"></span><div class="small" style="min-width:0">${i.finals.driveFolder ? (i.finals.driveExists ? 'Google Drive에도 복사해요' : 'Google Drive 폴더를 찾을 수 없어요') : 'Google Drive 복사가 꺼져 있어요'}${i.finals.driveFolder ? `<div class="mono">${esc(i.finals.driveFolder)}</div>` : ''}</div></div>
+      ${driveHealth(i.finals)}
       ${i.finals.driveCandidates.length ? `<div class="addbar"><select class="btn" id="drivesel" style="flex:1;min-width:0" aria-label="Google Drive 폴더">${i.finals.driveCandidates.map(d => `<option value="${esc(d)}" ${d === i.finals.driveFolder ? 'selected' : ''}>${esc(d.split('/').slice(-2).join(' / '))}</option>`).join('')}<option value="">Google Drive에 복사하지 않기</option></select><button class="btn sm" data-act="setdrive">저장</button></div>` : `<p class="small muted" style="margin:8px 0 0">Google Drive 데스크톱 앱을 설치하면 완성본이 Drive에도 자동으로 올라가요.</p>`}
     </section>` : ''}
   </div>`;
@@ -399,6 +400,14 @@ async function addUrl(url, work) {
 const workFile = (w, f) => `/work-file?id=${w.id}&f=${encodeURIComponent(f)}`;
 const fmtSize = b => b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`;
 function pinsOf(r) { return ui.pins[r.id] || r.pins || []; }
+// 홈 > 완성본 저장: Drive 진단 결과와 다시 시도 대기열
+function driveHealth(f) {
+  if (!f.driveFolder) return '';
+  const c = f.check, q = f.queue || [];
+  const dot = !c ? 'warn' : c.state === 'ok' ? (c.mode === 'stream' ? 'warn' : 'ok') : 'bad';
+  return `<div class="status"><span class="dot ${dot}"></span><div class="small" style="min-width:0">Drive 점검: ${c ? esc(c.message) : '아직 점검하지 않았어요.'}${c?.hint ? `<div class="small" style="margin-top:4px">${esc(c.hint)}</div>` : ''}${c ? `<div class="small muted">${ago(c.at)} 점검</div>` : ''}</div><button class="btn sm" data-act="drivecheck" ${ui.busy ? 'disabled' : ''}>다시 점검</button></div>
+    ${q.length ? `<div class="status"><span class="dot warn"></span><div class="small" style="min-width:0">Drive 복사 대기 ${q.length}건: ${q.map(x => `<a href="#work-${x.workId}">${x.workId}</a>`).join(', ')}<div class="small muted">자동으로 다시 시도해요 (10분 간격부터).</div></div><button class="btn sm" data-act="driveretryall" ${ui.busy ? 'disabled' : ''}>지금 다시 시도</button></div>` : ''}`;
+}
 // 최종 저장의 Google Drive 단계 (실패하면 다시 복사)
 function driveStep(w, f) {
   const d = f.drive || { status: 'off' };
@@ -745,6 +754,8 @@ document.addEventListener('click', e => {
       ui.imgFixOpen = false; ui.draftPick = null; ui.dPicks = null; ui.pNotes = null; ui.fixCuts = null; ui.pins = {}; if (d.img === 'final') ui.finalPick = new Set(); render(); toast(c[2]);
     });
   }
+  if (d.act === 'drivecheck') return run(async () => { ui.busy = true; render(); try { S = (await api('/api/drive-check', {})).state; toast(S.info.finals.check?.message || '점검했어요.'); } finally { ui.busy = false; render(); } });
+  if (d.act === 'driveretryall') return run(async () => { ui.busy = true; render(); toast('Google Drive에 다시 복사하는 중…'); try { const r = await api('/api/drive-retry-all', {}); S = r.state; const ok = r.done.filter(x => x.status === 'copied').length; toast(`${ok}/${r.done.length}건 복사했어요.`); } finally { ui.busy = false; render(); } });
   if (d.driveretry) return run(async () => { ui.busy = true; render(); toast('Google Drive에 복사하는 중…'); try { const r = await api(`/api/works/${d.driveretry}/drive-retry`, {}); S = r.state; const f = r.work.type === 'image' ? r.work.image.final : r.work.video.final; toast(f.drive.status === 'copied' ? 'Google Drive에 복사했어요.' : f.drive.status === 'failed' ? '아직 복사하지 못했어요. 잠시 뒤 다시 눌러 주세요.' : 'Drive 폴더를 확인해 주세요.'); } finally { ui.busy = false; render(); } });
   if (d.motionopen !== undefined) { ui.motionOpen = !ui.motionOpen; }
   if (d.tpl) {

@@ -14,7 +14,7 @@ import { VIDEO_STAGE, SUB_STATUS, requestStory, fixStory, setCutImage, approveSt
 import { listTemplates, saveTemplate, deleteTemplate, findBrowser } from './lib/motion.js';
 import { finalsConfig, setFinals, driveCandidates } from './lib/finalize.js';
 import { claudeQueue } from './lib/queue.js';
-import { recopyToDrive } from './lib/drive.js';
+import { recopyToDrive, diagnoseDrive, driveStatus, driveQueue, pumpDriveQueue } from './lib/drive.js';
 import { applyHandover } from './lib/handover.js';
 import { listFonts, addFont } from './lib/fonts.js';
 import { stylePreview, subtitleStyle, lineLimit, COLOR_MODES, SAFE_BOTTOM } from './lib/subtitles.js';
@@ -109,7 +109,7 @@ function state(req) {
     fonts: listFonts(), templates: listTemplates().map(({ html, clips, ...t }) => ({ ...t, keys: t.keys })), subColors: COLOR_MODES, subLimits: Object.fromEntries(Object.keys(ACCOUNTS).map(a => [a, lineLimit(subtitleStyle(), a)])), safeBottom: SAFE_BOTTOM,
     info: {
       local, imageRoot: config.imageRoot, imageRootExists: fs.existsSync(config.imageRoot), folders: folderMap(),
-      finals: { ...finalsConfig(), driveExists: !!config.driveFolder && fs.existsSync(config.driveFolder), driveCandidates: local ? driveCandidates() : [] },
+      finals: { ...finalsConfig(), driveExists: !!config.driveFolder && fs.existsSync(config.driveFolder), driveCandidates: local ? driveCandidates() : [], check: driveStatus(), queue: driveQueue() },
       claudeLastSeen: claudeLastSeen(), browser: !!findBrowser(), dataDir: local ? DATA_DIR : undefined,
       phone: local ? { urls: lanUrls(config.port), accessCode: config.accessCode } : undefined
     }
@@ -195,6 +195,8 @@ async function route(req, res) {
     try { await streamToFile(req, tmp); const w = await uploadVideo(m[1], tmp, who(req)); return send(res, 200, { work: w, state: state(req) }); }
     finally { fs.rmSync(tmp, { force: true }); }
   }
+  if (p === '/api/drive-check' && req.method === 'POST') { await diagnoseDrive(); return send(res, 200, { state: state(req) }); }
+  if (p === '/api/drive-retry-all' && req.method === 'POST') { const r = await pumpDriveQueue(true); return send(res, 200, { done: r, state: state(req) }); }
   m = /^\/api\/works\/([A-Za-z]+-\d+)\/drive-retry$/.exec(p);
   if (m && req.method === 'POST') { const w = await recopyToDrive(m[1], who(req)); return send(res, 200, { work: w, state: state(req) }); }
   // 모션 그래픽 템플릿
@@ -252,7 +254,7 @@ async function route(req, res) {
     if (typeof b.imageRoot === 'string' && b.imageRoot.trim()) config.imageRoot = b.imageRoot.trim().replace(/^~(?=\/|$)/, os.homedir());
     save('config', config);
     if (b.productFolders || b.otherFolders) setFolders(b);
-    if (b.finalsFolder !== undefined || b.driveFolder !== undefined) setFinals(b);
+    if (b.finalsFolder !== undefined || b.driveFolder !== undefined) { setFinals(b); await diagnoseDrive().catch(() => {}); }
     return send(res, 200, { state: state(req) });
   }
   if (p === '/file' && req.method === 'GET') {
@@ -306,3 +308,6 @@ server.listen(port, '0.0.0.0', () => {
 const pump = () => { try { pumpRenders(); } catch (e) { console.error('모션 그래픽 확인 실패:', e.message); } };
 pump();
 setInterval(pump, 3000).unref();
+// Google Drive: 켤 때 한 번 진단하고, 실패한 복사는 5분마다 확인해서 다시 시도한다
+diagnoseDrive().catch(() => {});
+setInterval(() => { pumpDriveQueue().catch(() => {}); }, 5 * 60 * 1000).unref();

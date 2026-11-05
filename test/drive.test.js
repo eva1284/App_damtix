@@ -62,3 +62,28 @@ test('일시적인 오류가 아니면 바로 실패로 남긴다', async () => 
   await assert.rejects(D.retry(async () => { n++; throw Object.assign(new Error('no'), { code: 'EACCES' }); }));
   assert.equal(n, 1);
 });
+
+test('Drive 점검과 다시 시도 대기열: 실패한 복사는 대기열에 남고 자동 재시도로 복사된다', async () => {
+  const ok = await D.diagnoseDrive();
+  assert.equal(ok.state, 'ok');
+  const orig = fs.promises.mkdir;
+  fs.promises.mkdir = async () => { throw err11(); };
+  let w;
+  try {
+    const bad = await D.diagnoseDrive();
+    assert.equal(bad.state, 'ok', '이미 있는 폴더라 쓰기는 돼요');
+    w = await done();
+    await IM.finalConfirm(w.id, [w.image.results[0].id], 'none');
+  } finally { fs.promises.mkdir = orig; }
+  assert.deepEqual(D.driveQueue().map(q => q.workId), [w.id]);
+  assert.deepEqual(await D.pumpDriveQueue(), [], '방금 실패한 건 10분 기다려요');
+  const r = await D.pumpDriveQueue(true);
+  assert.deepEqual(r, [{ workId: w.id, status: 'copied' }]);
+  assert.equal(D.driveQueue().length, 0);
+  // 폴더가 없으면 안내
+  setFinals({ driveFolder: path.join(tmp, 'nope') });
+  const miss = await D.diagnoseDrive();
+  assert.equal(miss.state, 'missing');
+  assert.match(miss.hint, /Google Drive 앱/);
+  setFinals({ driveFolder: drive });
+});

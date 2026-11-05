@@ -126,3 +126,18 @@ test('템플릿에서 시작하기: 재료 영상과 글자만 새로 넣는다'
   assert.equal(r.video.motion.comp.texts.JP.title.text, '新作');
   assert.equal(r.video.motion.comp.texts.GLOBAL.end.text, 'See you');
 });
+
+test('배경 음악이 WAV여도 끝까지 만들어진다 (짧으면 반복, 길면 자름)', { timeout: 300000 }, async () => {
+  const wavShort = path.join(tmp, 'short.wav'), wavLong = path.join(tmp, 'long.wav');
+  execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1.2', '-c:a', 'pcm_s16le', wavShort]);
+  execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=220:duration=9', '-c:a', 'pcm_s16le', wavLong]);
+  const w = W.createWork({ type: 'video', account: 'GLOBAL', product: 'P7XL', date: '2026-11-23', title: '음악' });
+  for (const [wav, name] of [[wavShort, 'a.mp4'], [wavLong, 'b.mp4']]) {
+    const comp = M.buildComposition(w, { html: '<div style="color:#fff;font-size:60px">x</div>', duration: 3, texts: {}, clips: [{ src: clip, at: 0, duration: 2 }], music: { src: wav, volume: 0.5 } });
+    const t = Date.now();
+    const info = await M.renderMotion(comp, w, 'GLOBAL', path.join(tmp, name));
+    assert.equal(Math.round(info.duration), 3);
+    assert.ok(info.audio);
+    assert.ok(Date.now() - t < 120000);
+  }
+});
