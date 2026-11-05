@@ -6,6 +6,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { APP_DIR, DATA_DIR, ensureData, load, save, claudeLastSeen } from './lib/store.js';
 import { DEFS, ACCOUNTS, applyChange, rollback, acceptProposal, rejectProposal, checkText } from './lib/rules.js';
+import { TYPES as WORK_TYPES, STORES, CAPTION_STATUS, listWorks, createWork, updateWork, deleteWork, requestCaption, fixCaption, confirmCaption, reopenCaption, queue } from './lib/works.js';
 
 ensureData();
 const PUBLIC_DIR = path.join(APP_DIR, 'public');
@@ -78,7 +79,8 @@ function state(req) {
   return {
     brand: load('brand'), products: load('products'), proposals: load('proposals'),
     history: load('history').map(({ snapshot, ...h }) => h),
-    defs: DEFS, accounts: ACCOUNTS,
+    defs: DEFS, accounts: ACCOUNTS, types: WORK_TYPES, stores: STORES, captionStatus: CAPTION_STATUS,
+    works: listWorks(), queue: queue(),
     info: {
       local, imageRoot: config.imageRoot, imageRootExists: fs.existsSync(config.imageRoot),
       claudeLastSeen: claudeLastSeen(), dataDir: local ? DATA_DIR : undefined,
@@ -87,6 +89,7 @@ function state(req) {
   };
 }
 
+const who = req => isLocal(req) ? '나 (Mac)' : '나 (폰)';
 const LOGIN_PAGE = fs.readFileSync(path.join(PUBLIC_DIR, 'login.html'));
 
 async function route(req, res) {
@@ -107,7 +110,7 @@ async function route(req, res) {
   if (p === '/api/state' && req.method === 'GET') return send(res, 200, state(req));
   if (p === '/api/change' && req.method === 'POST') {
     const b = await readBody(req);
-    const r = applyChange({ key: b.key, draft: b.draft, reason: b.reason, by: isLocal(req) ? '화면 (Mac)' : '화면 (폰)' });
+    const r = applyChange({ key: b.key, draft: b.draft, reason: b.reason, by: who(req) });
     return send(res, 200, { ...r, state: state(req) });
   }
   if (p === '/api/rollback' && req.method === 'POST') {
@@ -121,6 +124,16 @@ async function route(req, res) {
   }
   m = /^\/api\/products\/([A-Z0-9]+)\/images$/.exec(p);
   if (m && req.method === 'GET') return send(res, 200, productImages(m[1]));
+  if (p === '/api/works' && req.method === 'POST') {
+    const w = createWork(await readBody(req), who(req));
+    return send(res, 200, { work: w, state: state(req) });
+  }
+  m = /^\/api\/works\/([A-Za-z]+-\d+)\/(update|delete|caption-request|caption-fix|caption-confirm|caption-reopen)$/.exec(p);
+  if (m && req.method === 'POST') {
+    const b = await readBody(req), id = m[1], by = who(req);
+    const w = { update: () => updateWork(id, b, by), delete: () => deleteWork(id), 'caption-request': () => requestCaption(id, b.note, by), 'caption-fix': () => fixCaption(id, b.note, by), 'caption-confirm': () => confirmCaption(id, by), 'caption-reopen': () => reopenCaption(id, by) }[m[2]]();
+    return send(res, 200, { work: w, state: state(req) });
+  }
   if (p === '/api/check' && req.method === 'POST') return send(res, 200, checkText(await readBody(req)));
   if (p === '/api/config' && req.method === 'POST') {
     if (!isLocal(req)) return fail(res, 403, '설정은 Mac에서만 바꿀 수 있어요.');
