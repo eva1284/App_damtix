@@ -109,3 +109,43 @@ test('최종 이미지 화질: 4:4:4 고화질 JPEG, 큰 이미지는 1080px로 
   assert.equal((await optimizeImage(small, path.join(tmp, 'q2.jpg'))).width, 896);
   assert.equal((await optimizeImage(small, path.join(tmp, 'q3.jpg'), { enlarge: true })).width, 1080);
 });
+
+test('이미 만든 컷 이미지 옮기기: 시작 전 작업에 Claude가 컷을 정하고 바로 올리면 영상 컷에 자동 연결', async () => {
+  const v = W.createWork({ type: 'video', account: 'JP', product: 'P7XL', date: '2026-11-05', title: 'SD 캐릭터 영상' });
+  V.requestStory(v.id, '');
+  V.submitStory(v.id, { cuts: [1, 2, 3, 4, 5].map(i => ({ start: (i - 1) * 2, end: i * 2, desc: `컷 ${i}` })) });
+  V.setCutImage(v.id, 'C2', 'IMG-001');
+  const iw = W.createWork({ type: 'image', account: 'JP', product: 'P7XL', date: '2026-11-05', title: 'VID 컷 이미지 (SD 캐릭터)' });
+  assert.equal(W.getWork(iw.id).image, undefined);
+  assert.throws(() => IM.setCuts(iw.id, [{ id: 'X1', title: 'x' }]), /C1, C2, C5-1/);
+  const r = IM.setCuts(iw.id, [{ id: 'C1', title: '요원 등장', from: `${v.id}:C1` }, { id: 'C5-1', title: '마사지 1', from: `${v.id}:C5` }, { id: 'C5-2', title: '마사지 2', from: `${v.id}:C5` }], 'Claude');
+  assert.deepEqual(r.image.cuts.map(c => c.id), ['C1', 'C5-1', 'C5-2']);
+  let cuts = W.getWork(v.id).video.story.cuts;
+  assert.equal(cuts[0].fromImage, `${iw.id}:C1`);
+  assert.equal(cuts[1].fromImage, 'IMG-001', '다른 연결은 그대로');
+  assert.equal(cuts[4].fromImage, `${iw.id}:C5-1,${iw.id}:C5-2`);
+  // 구도 시안 없이 바로 올리기
+  const f = await img('sd.png', 1080, 1920, '#999');
+  const w2 = await IM.submitImages(iw.id, [{ path: f, cut: 'C1' }, { path: f, cut: 'C5-1' }, { path: f, cut: 'c5-2' }], '이미 만든 이미지', 'Claude');
+  assert.equal(w2.image.stage, 'result_review');
+  assert.deepEqual(w2.image.results.map(x => x.cut), ['C1', 'C5-1', 'C5-2']);
+  assert.match(w2.log[0].what, /구도 시안 없이 바로/);
+  // 사용자가 한 장 더 올리면 바꾸지 않고 더한다
+  const w3 = await IM.submitImages(iw.id, [{ path: f, cut: 'C1' }], '', '화면', { append: true });
+  assert.equal(w3.image.results.length, 4);
+  // Claude가 영상 컷 연결을 바꿀 수 있다 (영상 검수 전 단계 어디서나)
+  V.approveStory(v.id, 'claude');
+  V.setCutImage(v.id, 'C3', [`${iw.id}:C5-1`, `${iw.id}:C1`]);
+  assert.equal(W.getWork(v.id).video.story.cuts[2].fromImage, `${iw.id}:C5-1,${iw.id}:C1`);
+  assert.throws(() => V.setCutImage(v.id, 'C9', 'IMG-001'), /C9를 찾을 수 없어요/);
+});
+
+test('이미지 작업: 컷 이름 없이 cut만 붙여 올리면 그 이름으로 컷을 만든다, 시안 없이 바로 맡기기', async () => {
+  const iw = W.createWork({ type: 'image', account: 'JP', product: 'P7XL', date: '2026-11-06', title: '바로 올리기' });
+  const f = await img('x.png', 1080, 1350);
+  const w = await IM.submitImages(iw.id, [{ path: f, cut: 'C1' }, { path: f, cut: 'C3' }]);
+  assert.deepEqual(w.image.cuts.map(c => c.id), ['C1', 'C3']);
+  const iw2 = W.createWork({ type: 'image', account: 'JP', product: 'P7XL', date: '2026-11-06', title: '바로 맡기기' });
+  assert.equal(IM.requestMake(iw2.id, '구도는 레퍼런스대로').image.stage, 'make');
+  assert.equal(claudeQueue().find(t => t.workId === iw2.id).task, '이미지 만들기');
+});

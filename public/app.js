@@ -406,13 +406,36 @@ function draftPicks(im) {
   for (const c of imgCuts(im)) out[c.id] = ui.dPicks?.[c.id] || saved[c.id] || (imgCuts(im).length === 1 ? im.drafts.find(d => (d.cut || 'C1') === c.id)?.id : undefined);
   return out;
 }
+const cutChips = im => im.cuts?.length > 1 ? `<div class="row" style="margin:0 0 12px;gap:6px"><span class="small muted">컷 ${im.cuts.length}개</span>${im.cuts.map(c => `<span class="chip st-plan" title="${esc(c.desc || '')}">${esc(c.id)}${c.title ? ` · ${esc(c.title.replace(/^C[\d-]+ · /, '').slice(0, 14))}` : ''}${c.from ? ` → ${esc(c.from)}` : ''}</span>`).join('')}</div>` : '';
+// 이미 만든 이미지 올리기 (여러 장 가능, 컷을 고를 수 있다)
+function imgUpload(w, im, more) {
+  const cuts = imgCuts(im);
+  return `<div class="drop mini" data-imgdrop="${w.id}" style="margin-top:${more ? 16 : 12}px"><span class="small">${more ? '이미지 더 올리기' : '이미 만든 이미지가 있으면 여기에 끌어다 놓거나'}</span><div class="addbar">${cuts.length > 1 ? `<select class="btn" id="imgcut" aria-label="올릴 컷" style="min-height:36px">${cuts.map(c => `<option value="${c.id}" ${ui.imgCut === c.id ? 'selected' : ''}>${esc(c.id)}</option>`).join('')}</select>` : ''}<label class="btn sm${more ? '' : ' primary'}" for="imgfile-${w.id}">이미지 고르기</label><input type="file" id="imgfile-${w.id}" data-imgfile="${w.id}" accept="image/*" multiple hidden></div></div>`;
+}
+async function uploadImages(id, files) {
+  const cut = $('#imgcut')?.value;
+  ui.imgCut = cut;
+  await run(async () => {
+    let n = 0;
+    for (const f of files) {
+      if (!f.type.startsWith('image/')) continue;
+      const res = await fetch(`/api/works/${id}/image-upload`, { method: 'POST', headers: { 'x-filename': encodeURIComponent(f.name), ...(cut ? { 'x-cut': cut } : {}) }, body: f });
+      const r = await res.json();
+      if (!res.ok) throw new Error(r.error || '이미지를 올리지 못했어요.');
+      S = r.state; n += 1;
+    }
+    render(); toast(n ? `이미지 ${n}장을 올렸어요${cut ? ` (${cut})` : ''}.` : '이미지 파일만 올릴 수 있어요.');
+  });
+}
 function imagePanel(w) {
   const im = w.image || { stage: 'none', drafts: [], results: [] };
   const label = S.imageStage[im.stage];
   let body = '';
-  if (im.stage === 'none') body = `<p class="small" style="margin:0 0 12px">먼저 Claude가 컴퓨터로 그린 구도 시안을 보내요. 크레딧이 들지 않아요. 고른 구도로만 실제 이미지를 만들어요.</p>
-    <label class="small">시안 방향 (선택)<textarea id="img-note" placeholder="예: 제품을 크게, 아침 햇살, 손이 나오는 컷"></textarea></label>
-    <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn primary" data-img="request">구도 시안 맡기기</button></div>`;
+  if (im.stage === 'none') body = `<p class="small" style="margin:0 0 12px">보통은 Claude가 컴퓨터로 그린 구도 시안을 먼저 보내요(크레딧 없음). 구도가 이미 정해졌으면 시안 없이 바로 맡기거나, 이미 만든 이미지를 올려도 돼요.</p>
+    ${cutChips(im)}
+    <label class="small">방향 (선택)<textarea id="img-note" placeholder="예: 제품을 크게, 아침 햇살, 손이 나오는 컷 · 여러 장이면 '5컷 캐러셀'"></textarea></label>
+    <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn" data-img="make">시안 없이 바로 만들기 맡기기</button><button class="btn primary" data-img="request">구도 시안 맡기기</button></div>
+    ${imgUpload(w, im)}`;
   else if (['draft_requested', 'draft_fix', 'make', 'make_fix', 'upscale'].includes(im.stage)) {
     const fix = im.stage === 'upscale' ? null : im.fixes?.[0];
     body = `<div class="status"><span class="dot"></span><div class="small">${esc(label)}.${im.stage.startsWith('make') || im.stage === 'upscale' ? ' Higgsfield를 쓰기 전에 Claude가 예상 크레딧을 먼저 알려 드려요.' : ''}${im.stage === 'upscale' ? ` 업스케일이 끝나면 바로 최종 저장까지 진행돼요. (${im.upscale.ids.join(', ')})` : ''}${fix && im.stage.endsWith('fix') ? `<div class="muted" style="margin-top:4px">수정 요청: ${esc(fix.note || '')}${fix.pins?.length ? ` (핀 ${fix.pins.reduce((a, x) => a + x.pins.length, 0)}개)` : ''}</div>` : ''}</div></div>${cmdBox()}`;
@@ -435,6 +458,7 @@ function imagePanel(w) {
       ${imgCuts(im).map(c => { const rs = im.results.filter(r => (r.cut || 'C1') === c.id); return `${imgCuts(im).length > 1 ? `<div class="cuth" style="margin-top:16px"><b class="small">${esc(c.id)}${c.title ? ` · ${esc(c.title.replace(/^C\d+ · /, ''))}` : ''}</b><span class="small muted">${rs.length}장</span></div>` : ''}<div class="grid g-2">${rs.map(r => { const pins = pinsOf(r); return `<div><div class="board" data-board="${r.id}"><img src="${workFile(w, r.file)}" alt="${r.id}" style="display:block;width:100%">${pins.map((p, i) => `<span class="pin" style="left:${p.x}%;top:${p.y}%">${i + 1}</span>`).join('')}</div>
         <label class="small" style="display:flex;gap:8px;align-items:center;min-height:44px"><input type="checkbox" data-final="${r.id}" ${ui.finalPick.has(r.id) ? 'checked' : ''}> ${r.id} 최종으로 쓰기<span class="spacer"></span>${r.width ? `<span class="${r.width < 1080 ? 'chip st-warn' : 'small muted'}">${r.width}×${r.height}${r.width < 1080 ? ' · 저해상도' : ''}</span>` : ''}</label>
         <div class="notes">${pins.map((p, i) => `<div class="note"><span class="n">${i + 1}</span><input type="text" id="pin-${r.id}-${i}" data-pin="${r.id}" data-i="${i}" value="${esc(p.note)}" placeholder="고칠 점"><button class="btn sm" data-pindel="${r.id}" data-i="${i}" aria-label="${i + 1}번 핀 지우기">지우기</button></div>`).join('')}</div></div>`; }).join('') || '<p class="empty">이 컷의 이미지가 아직 없어요.</p>'}</div>`; }).join('')}
+      ${im.stage === 'result_review' ? imgUpload(w, im, true) : ''}
       <label class="small" style="display:block;margin-top:16px">전체 메모 (선택)<textarea id="imgfix-note" placeholder="예: 전체적으로 조금 더 밝게"></textarea></label>
       ${(() => { const small = im.results.filter(r => ui.finalPick.has(r.id) && r.width && r.width < 1080); return small.length ? `<div class="cautionbox"><b>${small.map(r => `${r.id} (${r.width}×${r.height})`).join(', ')}</b>는 가로 1080px보다 작아요. 최종 컨펌 때 어떻게 할까요?
         <div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;color:var(--ink)">${[['higgsfield', 'Higgsfield로 업스케일 (크레딧 사용, Claude 차례가 한 번 더 생겨요)'], ['local', '프로그램에서 확대 (무료, 조금 덜 선명)'], ['none', '원본 크기 그대로']].map(([k, t]) => `<label style="display:flex;gap:8px;align-items:center;min-height:36px"><input type="radio" name="upscale" value="${k}" data-upscale="${k}" ${ui.upscale === k ? 'checked' : ''}> ${t}</label>`).join('')}</div></div>` : ''; })()}
@@ -509,14 +533,14 @@ function videoPanel(w) {
   } else if (v.stage === 'story_review') {
     const imgs = S.works.filter(x => x.type === 'image' && x.id !== w.id && (x.image?.results?.length || x.image?.final || x.image?.cuts?.length > 1));
     const imgOpts = imgs.flatMap(x => x.image?.cuts?.length > 1 ? x.image.cuts.map(c => [`${x.id}:${c.id}`, `${x.id} ${c.id} · ${x.title}`]) : [[x.id, `${x.id} · ${x.title}`]]);
-    const linked = [...new Set(v.story.cuts.map(c => (c.fromImage || '').split(':')[0]).filter(Boolean))];
+    const linked = [...new Set(v.story.cuts.flatMap(c => (c.fromImage || '').split(',').map(x => x.split(':')[0])).filter(Boolean))];
     body = `<p class="small muted" style="margin:0 0 12px">${v.story.cuts.length}컷 · ${fmtT(v.story.cuts[v.story.cuts.length - 1].end)}${v.story.note ? ` · Claude: ${esc(v.story.note)}` : ''}</p>
       <div class="cautionbox" style="margin:0 0 12px;background:var(--fill);color:var(--ink)">${linked.length ? `컷 이미지: ${linked.map(id => `<a href="#work-${id}">${id}</a>`).join(', ')}에서 컷마다 구도를 고르고 이미지를 만들어요. 다 만든 뒤 이 영상을 승인하면 Claude가 그 이미지로 컷을 만들어요.` : '컷마다 먼저 이미지를 뽑고 싶으면, 이 스토리보드로 <b>컷 이미지 작업</b>을 한 번에 만들 수 있어요. 컷마다 구도 시안을 고르고 이미지를 만든 뒤 영상에 써요.'}
         ${linked.length ? '' : `<div class="row" style="margin-top:8px"><span class="spacer"></span><button class="btn sm primary" data-vid="cutimages">컷 이미지 한꺼번에 만들기 (${v.story.cuts.length}컷)</button></div>`}</div>
       <div class="cuts">${v.story.cuts.map((c, i) => `<div class="cut"><div class="cth">${c.sketch ? `<img src="${workFile(w, c.sketch)}" alt="${c.id} 스케치" style="width:100%;height:100%;object-fit:contain;background:#fff">` : `<div style="display:grid;place-items:center;height:100%;font-size:12px;color:var(--muted)">${c.id}</div>`}</div>
         <div style="min-width:0;display:flex;flex-direction:column;gap:4px"><div class="row"><b class="small">${c.id}</b><span class="code">${fmtT(c.start)}–${fmtT(c.end)}</span>${c.kind === 'motion' ? '<span class="chip st-plan">모션 그래픽</span>' : ''}${c.camera ? `<span class="small muted">${esc(c.camera)}</span>` : ''}</div>
           <div class="small">${esc(c.desc)}</div>${c.text ? `<div class="small">${esc(c.text)}</div><div class="small muted">${esc(c.back)}</div>` : ''}
-          <label class="small muted" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">이미지 작업으로 시작<select class="btn" data-cutimg="${c.id}" style="min-height:36px;flex:1;min-width:0"><option value="">없음</option>${imgOpts.map(([val, lab]) => `<option value="${val}" ${c.fromImage === val ? 'selected' : ''}>${esc(lab)}</option>`).join('')}</select></label>
+          <label class="small muted" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">이미지 작업으로 시작<select class="btn" data-cutimg="${c.id}" style="min-height:36px;flex:1;min-width:0"><option value="">없음</option>${c.fromImage?.includes(',') ? `<option value="${esc(c.fromImage)}" selected>여러 장: ${esc(c.fromImage.replace(/,/g, ', '))}</option>` : ''}${imgOpts.map(([val, lab]) => `<option value="${val}" ${c.fromImage === val ? 'selected' : ''}>${esc(lab)}</option>`).join('')}</select></label>
           ${cutRefs(w, i)}</div></div>`).join('')}</div>
       ${ui.vFixOpen === 'story' ? `<label class="small" style="display:block;margin-top:16px">스토리보드를 어떻게 고칠까요?<textarea id="vstory-note" placeholder="예: C2를 더 짧게, 마지막에 제품 클로즈업 추가"></textarea></label><div class="row" style="margin-top:12px"><button class="btn" data-vid="fixcancel">취소</button><span class="spacer"></span><button class="btn primary" data-vid="fixstory">수정 요청 보내기</button></div>`
         : `<div class="row" style="margin-top:16px"><button class="btn" data-vid="fixopen-story">수정 요청</button><span class="spacer"></span><button class="btn" data-vapprove="capcut">승인 · CapCut에서 내가 편집</button><button class="btn primary" data-vapprove="claude">승인 · Claude가 편집</button></div>`}`;
@@ -696,6 +720,7 @@ document.addEventListener('click', e => {
     const im = w.image || {};
     const calls = {
       request: ['image-request', { note: $('#img-note')?.value }, '구도 시안을 Claude에게 맡겼어요.'],
+      make: ['image-make', { note: $('#img-note')?.value }, '시안 없이 바로 이미지 만들기를 맡겼어요.'],
       again: ['image-request', { note: '' }, '새 버전 구도 시안을 Claude에게 맡겼어요.'],
       fixdrafts: ['image-fix-drafts', { note: $('#draftfix-note')?.value, cuts: [...(ui.fixCuts || [])] }, '시안 수정 요청을 보냈어요.'],
       pick: ['image-picks', { picks: draftPicks(im), notes: ui.pNotes || {}, note: $('#pick-note')?.value }, imgCuts(im).length > 1 ? `${imgCuts(im).length}컷 이미지 만들기를 맡겼어요.` : '이 시안으로 이미지 만들기를 맡겼어요.'],
@@ -784,6 +809,8 @@ document.addEventListener('change', e => { const t = e.target;
   if (t.dataset.vfile && t.files.length) uploadVideoFile(t.dataset.vfile, t.files[0]);
   if (ui.newWork && t.id?.startsWith('nw-')) { const k = { 'nw-type': 'type', 'nw-acc': 'acc', 'nw-prod': 'prod', 'nw-date': 'date' }[t.id]; if (k) ui.newWork[k] = t.value; if (t.id === 'nw-cap') ui.newWork.cap = t.checked; } if (t.dataset.f && ui.edit && t.type === 'checkbox') ui.edit.draft[t.dataset.f] = t.checked;
   if (t.dataset.fontfile !== undefined && t.files.length) uploadFont(t.files[0]);
+  if (t.dataset.imgfile && t.files.length) uploadImages(t.dataset.imgfile, [...t.files]);
+  if (t.id === 'imgcut') ui.imgCut = t.value;
 });
 
 // 다른 곳(Claude 앱, 다른 기기)에서 바뀐 내용을 30초마다 반영. 수정 중일 때는 건드리지 않는다.
@@ -807,6 +834,7 @@ document.addEventListener('drop', e => {
   document.querySelectorAll('.drop.over').forEach(x => x.classList.remove('over'));
   const dt = e.dataTransfer;
   if (e.target.closest?.('[data-vdrop]') && dt.files?.length) { uploadVideoFile(work, dt.files[0]); return; }
+  if (e.target.closest?.('[data-imgdrop]') && dt.files?.length) { uploadImages(work, [...dt.files]); return; }
   if (dt.files?.length) { uploadFiles([...dt.files], work); return; }
   const u = dt.getData('text/uri-list') || dt.getData('text/plain'); if (u) addUrl(u.split('\n')[0], work);
 });

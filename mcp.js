@@ -8,8 +8,8 @@ import { migrateConfig, productImages, folderMap, collectImages } from './lib/im
 import { ACCOUNTS, DEFS, checkText, addProposal } from './lib/rules.js';
 import { listWorks, getWork, createWork, submitCaption } from './lib/works.js';
 import { getRef, refPath, refsFor, submitAnalysis } from './lib/refs.js';
-import { submitDrafts, submitImages, submitUpscaled, imageForClaude, imageOf } from './lib/imagework.js';
-import { submitStory, submitVideo, submitSubtitles, videoForClaude, framesForClaude, submitMotion, previewMotion } from './lib/videowork.js';
+import { submitDrafts, submitImages, submitUpscaled, imageForClaude, imageOf, setCuts } from './lib/imagework.js';
+import { submitStory, submitVideo, submitSubtitles, videoForClaude, framesForClaude, submitMotion, previewMotion, setCutImage } from './lib/videowork.js';
 import { MOTION_GUIDE, listTemplates, getTemplate, closeBrowser } from './lib/motion.js';
 import { workDir } from './lib/files.js';
 import { finalsConfig } from './lib/finalize.js';
@@ -136,13 +136,13 @@ tool('list_queue', {
     '',
     '[구도 시안 만들기/고치기] 실제 생성 전에 크레딧 없이 보는 컴퓨터 스케치다. 요청 메모에 여러 컷(캐러셀, 스토리)이 있거나 image.cuts가 미리 정해져 있으면 submit_drafts의 cuts로 컷마다 시안을 보낸다(미리 정한 컷은 그 순서·설명을 따른다). 기획 메모, request.note, 연결된 레퍼런스(references, part가 있으면 그 부분용), 브랜드 비주얼 기준을 보고, 4:5(1080x1350) 비율 viewBox의 단순한 SVG 2~3개를 만든다: 무채색 도형으로 제품 위치·크기, 모델/손 위치, 문구 자리, 소품, 빛 방향을 표시하고 한국어 라벨을 붙인다. 고치기는 latestFix.note를 반영한다. submit_drafts로 보낸다.',
     '',
-    '[이미지 만들기/고치기] image.pickedDraft(고른 구도 SVG 파일과 메모)를 따른다. 컷이 여러 개면 image.cuts의 컷마다 pickedDraft를 따라 컷마다 이미지를 만들고 같은 모델·조명·인물로 이어지게 한다(cut을 붙여 submit_images). 고치기는 latestFix.cuts의 컷만 다시 만든다. 해상도는 가능한 가장 높게(가로 1080px 이상, image.minWidth) 만들고 원본 주소를 보낸다. get_product로 그 제품의 기준 이미지(referenceImages)를 항상 참조 이미지로 쓰고, 모델이 나오면 get_image_folders의 realModels/aiModels 사진을 써서 얼굴을 유지한다. Higgsfield로 생성하기 전에 예상 크레딧을 사용자에게 먼저 알리고 확인을 받는다. 결과는 submit_images로 보낸다(주소 url 또는 Mac 파일 path). 고치기는 latestFix의 핀(x,y는 왼쪽 위 기준 %)과 메모를 반영하고, view_work_image로 지금 결과를 보고 고친다. 그림 속 문구는 그 계정 언어로 쓰고 check_text로 검사한다.',
+    '[이미지 만들기/고치기] image.pickedDraft(고른 구도 SVG 파일과 메모)를 따른다. 사용자가 시안 없이 맡겼으면(request.noDraft) 기획 메모·request.note·레퍼런스대로 만든다. 컷이 여러 개면 image.cuts의 컷마다 pickedDraft를 따라 컷마다 이미지를 만들고 같은 모델·조명·인물로 이어지게 한다(cut을 붙여 submit_images). 고치기는 latestFix.cuts의 컷만 다시 만든다. 해상도는 가능한 가장 높게(가로 1080px 이상, image.minWidth) 만들고 원본 주소를 보낸다. get_product로 그 제품의 기준 이미지(referenceImages)를 항상 참조 이미지로 쓰고, 모델이 나오면 get_image_folders의 realModels/aiModels 사진을 써서 얼굴을 유지한다. Higgsfield로 생성하기 전에 예상 크레딧을 사용자에게 먼저 알리고 확인을 받는다. 결과는 submit_images로 보낸다(주소 url 또는 Mac 파일 path). 고치기는 latestFix의 핀(x,y는 왼쪽 위 기준 %)과 메모를 반영하고, view_work_image로 지금 결과를 보고 고친다. 그림 속 문구는 그 계정 언어로 쓰고 check_text로 검사한다.',
     '',
     '[최종 이미지 업스케일] image.upscale.files의 이미지만 Higgsfield로 가로 1080px 이상으로 업스케일한다. 예상 크레딧을 먼저 알리고 확인을 받은 뒤 submit_upscaled로 보내면 프로그램이 바로 최종 저장까지 한다.',
     '',
     '[스토리보드 만들기/고치기] 기획·레퍼런스(part가 cut:n이면 그 컷용)를 보고 9:16 릴스 컷 구성을 submit_storyboard로 보낸다. 컷마다 시작·끝(초), 장면 설명, 카메라, 화면 자막 초안(그 계정 언어)과 한국어 뜻. 토큰을 아끼려고 SVG 스케치는 꼭 필요한 컷만 넣는다.',
     '',
-    '[영상 편집하기/고치기] video.story를 따른다. 컷에 fromImage(이미지 작업 번호)가 있으면 그 작업의 최종 이미지로 그 컷을 만든다(get_work). Higgsfield 영상 생성은 예상 크레딧을 먼저 알리고 확인을 받는다. 자막(대사)은 넣지 않는다(프로그램이 나라별로 입힌다).',
+    '[영상 편집하기/고치기] video.story를 따른다. 컷에 fromImage가 있으면 그 이미지로 그 컷을 만든다: IMG-002는 그 작업의 최종 이미지, IMG-002:C3은 그 컷의 이미지, 쉼표로 여러 장이면(IMG-002:C5-1,IMG-002:C5-2) 그 순서대로 쓴다(get_work). 연결이 비었거나 바꿔야 하면 link_cut_image로 직접 연결한다. Higgsfield 영상 생성은 예상 크레딧을 먼저 알리고 확인을 받는다. 자막(대사)은 넣지 않는다(프로그램이 나라별로 입힌다).',
     '  · 글자 애니메이션·제목 카드·엔딩·레이아웃 틀이 있는 영상(스토리보드 kind=motion 컷)은 영상 파일을 직접 만들지 말고 submit_motion으로 코드(HTML)와 나라별 글자(motionAccounts 전부), 재료 영상(clips: Higgsfield 결과 주소, 올라온 영상 video:V1, 레퍼런스 등)을 보낸다. 처음 한 번 get_motion_guide를 읽는다. 영상 파일은 프로그램이 만들고 나라별 버전도 글자만 바꿔 프로그램이 만든다. 보내기 전에 preview_motion으로 2~3장면만 확인하면 좋다. 비슷한 영상은 list_motion_templates의 템플릿에서 시작한다(template).',
     '  · 글자 애니메이션 없이 촬영본만 이어 붙이는 편집은 CapCut 연결로 하고 submit_video로 보낸다.',
     '  · 고치기는 latestFix.notes(초 단위 시간과 메모)를 반영한다. 모션 그래픽이면 video.motion.html을 보고 html_edits로 바뀐 부분만 보낸다. video.motion.error가 있으면 그 오류부터 고친다. 필요한 장면만 view_video_frames로 확인한다.',
@@ -222,9 +222,21 @@ tool('submit_drafts', {
   return cuts ? `${w.id} ${cuts.length}컷의 구도 시안을 보냈어요. 사용자가 컷마다 고를 차례예요.` : `${w.id} 구도 시안 ${drafts.length}개를 보냈어요. 사용자가 고를 차례예요.`;
 });
 
+tool('set_image_cuts', {
+  title: '이미지 작업의 컷 정하기',
+  description: '이미지 작업을 여러 컷으로 나눈다(캐러셀, 영상 컷 이미지). id는 C1, C2… 또는 영상 컷에 맞춘 C5-1 같은 이름. from에 영상 컷(VID-001:C5)을 넣으면 그 영상 컷에 자동으로 연결된다(한 영상 컷에 여러 장 가능). 시작 전이거나 이미지가 들어오기 전 단계에서 쓴다. 이미 만든 이미지를 옮길 때는 이 도구로 컷을 정한 뒤 submit_images로 컷별로 올린다(구도 시안 단계 없이 바로 올릴 수 있다).',
+  inputSchema: { work_id: z.string(), cuts: z.array(z.object({ id: z.string().optional(), title: z.string(), desc: z.string().optional(), from: z.string().optional().describe('VID-001:C5') })).min(1).max(20) }
+}, ({ work_id, cuts }) => { const w = setCuts(work_id, cuts, 'Claude'); const linked = w.image.cuts.filter(c => c.from); return `${w.id}를 ${w.image.cuts.length}컷으로 나눴어요 (${w.image.cuts.map(c => c.id).join(', ')}).${linked.length ? ` 영상 컷 연결: ${linked.map(c => `${c.id}→${c.from}`).join(', ')}` : ''}`; });
+
+tool('link_cut_image', {
+  title: '영상 컷에 이미지 연결하기',
+  description: '영상 작업의 컷(C1…)에 쓸 이미지를 연결한다. image는 IMG-002(그 작업의 최종 이미지), IMG-002:C3(그 컷의 이미지), 여러 장이면 배열 또는 쉼표. 빈 문자열이면 연결을 뺀다. 스토리보드 검수부터 영상 검수 전까지 쓸 수 있다.',
+  inputSchema: { video_id: z.string(), links: z.array(z.object({ cut: z.string(), image: z.union([z.string(), z.array(z.string())]) })).min(1).max(30) }
+}, ({ video_id, links }) => { let w; for (const l of links) w = setCutImage(video_id, l.cut, l.image, 'Claude'); return `${w.id} 컷 연결: ${w.video.story.cuts.map(c => `${c.id}=${c.fromImage || '없음'}`).join(', ')}`; });
+
 tool('submit_images', {
   title: '만든 이미지 보내기',
-  description: 'Higgsfield 등으로 만든 이미지를 작업에 보낸다. 각 이미지는 내려받을 수 있는 원본 주소(url, 미리보기·썸네일 주소 말고) 또는 Mac의 파일 경로(path). 가로 1080px 이상이어야 인스타그램에서 선명하다(Higgsfield는 가능한 가장 높은 해상도로 생성). 컷이 여러 개인 작업은 이미지마다 cut(C1, C2…)을 넣고, 고칠 때는 고친 컷만 보내면 나머지 컷은 그대로 남는다. 사용한 프롬프트와 모델도 적는다.',
+  description: 'Higgsfield 등으로 만든 이미지를 작업에 보낸다. 구도 시안 단계 없이 바로 보낼 수도 있다(시작 전 작업, 이미 만든 이미지 옮기기). 각 이미지는 내려받을 수 있는 원본 주소(url, 미리보기·썸네일 주소 말고) 또는 Mac의 파일 경로(path). 가로 1080px 이상이어야 인스타그램에서 선명하다(Higgsfield는 가능한 가장 높은 해상도로 생성). 컷이 여러 개인 작업은 이미지마다 cut(C1, C2…)을 넣고, 고칠 때는 고친 컷만 보내면 나머지 컷은 그대로 남는다. 사용한 프롬프트와 모델도 적는다.',
   inputSchema: {
     work_id: z.string(),
     images: z.array(z.object({ url: z.string().optional(), path: z.string().optional(), cut: z.string().optional(), prompt: z.string().optional(), model: z.string().optional() })).min(1).max(40),
