@@ -10,23 +10,25 @@ import { IMAGE_EXT, migrateConfig, productImages, folderMap, listTopFolders, set
 import { spawn } from 'node:child_process';
 import { listRefs, getRef, refPath, addFileRef, addUrlRef, updateRef, link as linkRef, unlink as unlinkRef, deleteRef, dropWorkLinks } from './lib/refs.js';
 import { IMAGE_STAGE, requestDrafts, requestMake, fixDrafts, pickDraft, pickDrafts, savePins, fixResults, finalConfirm, submitImages } from './lib/imagework.js';
-import { VIDEO_STAGE, SUB_STATUS, requestStory, fixStory, setCutImage, approveStory, setMethod, uploadVideo, saveNotes, fixVideo, approveVideo, fixSubtitles, confirmSubtitles, finalConfirmVideo, subtitleStill, pumpRenders, createCutImages } from './lib/videowork.js';
+import { VIDEO_STAGE, SUB_STATUS, requestStory, fixStory, setCutImage, approveStory, setMethod, uploadVideo, saveNotes, fixVideo, approveVideo, fixSubtitles, confirmSubtitles, finalConfirmVideo, subtitleStill, pumpRenders, createCutImages, submitEdit, restoreVersion, editFix, NOTE_TARGETS } from './lib/videowork.js';
+import { stripFor } from './lib/edl.js';
+import { listSfx, addSfx, deleteSfx, sfxFile } from './lib/sfx.js';
 import { listTemplates, saveTemplate, deleteTemplate, findBrowser } from './lib/motion.js';
 import { finalsConfig, setFinals, driveCandidates } from './lib/finalize.js';
 import { claudeQueue } from './lib/queue.js';
 import { recopyToDrive, diagnoseDrive, driveStatus, driveQueue, pumpDriveQueue } from './lib/drive.js';
-import { applyHandover } from './lib/handover.js';
+import { applyMigrations } from './lib/handover.js';
 import { listFonts, addFont } from './lib/fonts.js';
 import { stylePreview, subtitleStyle, lineLimit, COLOR_MODES, SAFE_BOTTOM } from './lib/subtitles.js';
 import { WORK_DIR, REF_DIR } from './lib/files.js';
 import { TYPES as WORK_TYPES, STORES, CAPTION_STATUS, listWorks, createWork, updateWork, deleteWork, requestCaption, fixCaption, confirmCaption, reopenCaption } from './lib/works.js';
 
 ensureData();
-applyHandover();
+applyMigrations();
 migrateConfig();
 finalsConfig();
 const PUBLIC_DIR = path.join(APP_DIR, 'public');
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.avif': 'image/avif', '.heic': 'image/heic', '.tif': 'image/tiff', '.tiff': 'image/tiff', '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.json': 'application/json' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.avif': 'image/avif', '.heic': 'image/heic', '.tif': 'image/tiff', '.tiff': 'image/tiff', '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.json': 'application/json', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aif': 'audio/aiff', '.aiff': 'audio/aiff', '.ogg': 'audio/ogg', '.flac': 'audio/flac' };
 
 const isLocal = req => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
 const codeHash = code => crypto.createHash('sha256').update(`cc:${code}`).digest('hex').slice(0, 32);
@@ -106,7 +108,7 @@ function state(req) {
     history: load('history').map(({ snapshot, ...h }) => h),
     defs: DEFS, accounts: ACCOUNTS, types: WORK_TYPES, stores: STORES, captionStatus: CAPTION_STATUS,
     works: listWorks(), queue: claudeQueue(), refs: listRefs(), imageStage: IMAGE_STAGE, videoStage: VIDEO_STAGE, subStatus: SUB_STATUS,
-    fonts: listFonts(), templates: listTemplates().map(({ html, clips, ...t }) => ({ ...t, keys: t.keys })), subColors: COLOR_MODES, subLimits: Object.fromEntries(Object.keys(ACCOUNTS).map(a => [a, lineLimit(subtitleStyle(), a)])), safeBottom: SAFE_BOTTOM,
+    fonts: listFonts(), sfx: listSfx(), noteTargets: NOTE_TARGETS, templates: listTemplates().map(({ html, clips, ...t }) => ({ ...t, keys: t.keys })), subColors: COLOR_MODES, subLimits: Object.fromEntries(Object.keys(ACCOUNTS).map(a => [a, lineLimit(subtitleStyle(), a)])), safeBottom: SAFE_BOTTOM,
     info: {
       local, imageRoot: config.imageRoot, imageRootExists: fs.existsSync(config.imageRoot), folders: folderMap(),
       finals: { ...finalsConfig(), driveExists: !!config.driveFolder && fs.existsSync(config.driveFolder), driveCandidates: local ? driveCandidates() : [], check: driveStatus(), queue: driveQueue() },
@@ -189,6 +191,33 @@ async function route(req, res) {
     try { const w = await submitImages(m[1], [{ path: tmp, cut: req.headers['x-cut'] || undefined }], '', who(req), { append: true }); return send(res, 200, { work: w, state: state(req) }); }
     finally { fs.rmSync(tmp, { force: true }); }
   }
+  // 편집 목록(EDL): 화면에서 직접 고치기(구간·효과음), 버전 되돌리기, 보낸 수정 요청 고치기
+  m = /^\/api\/works\/([A-Za-z]+-\d+)\/video-(edit|restore|fix-edit)$/.exec(p);
+  if (m && req.method === 'POST') {
+    const b = await readBody(req), id = m[1], by = who(req);
+    const w = await ({ edit: () => submitEdit(id, { ...b.edl, note: b.note }, by, { user: true }), restore: () => restoreVersion(id, b.videoId, by), 'fix-edit': () => editFix(id, { note: b.note, notes: b.notes }, by) }[m[2]])();
+    return send(res, 200, { work: w, state: state(req) });
+  }
+  // 원본 클립 프레임 띠 (0.25초 간격)
+  m = /^\/api\/works\/([A-Za-z]+-\d+)\/strip$/.exec(p);
+  if (m && req.method === 'GET') {
+    const w = listWorks().find(x => x.id === m[1].toUpperCase());
+    const cut = w?.video?.edl?.cuts.find(c => c.id === String(url.searchParams.get('cut')).toUpperCase());
+    if (!cut) return fail(res, 404, '컷을 찾을 수 없어요.');
+    const name = `strip-${crypto.createHash('sha1').update(cut.src).digest('hex').slice(0, 12)}.jpg`;
+    const file = path.join(WORK_DIR, w.id, name), metaFile = file.replace(/\.jpg$/, '.json');
+    if (!fs.existsSync(file) || !fs.existsSync(metaFile)) { const meta = await stripFor(cut.src, w, file); fs.writeFileSync(metaFile, JSON.stringify({ ...meta, file: name })); }
+    return send(res, 200, JSON.parse(fs.readFileSync(metaFile, 'utf8')));
+  }
+  // 효과음 라이브러리
+  if (p === '/api/sfx/upload' && req.method === 'POST') {
+    const buffer = await readRaw(req, 30 * 1024 * 1024);
+    const s2 = addSfx({ name: decodeURIComponent(req.headers['x-name'] || ''), label: decodeURIComponent(req.headers['x-label'] || ''), filename: decodeURIComponent(req.headers['x-filename'] || ''), buffer });
+    return send(res, 200, { sfx: s2, state: state(req) });
+  }
+  m = /^\/api\/sfx\/([^/]+)\/delete$/.exec(p);
+  if (m && req.method === 'POST') { deleteSfx(decodeURIComponent(m[1])); return send(res, 200, { state: state(req) }); }
+  if (p === '/sfx-file' && req.method === 'GET') return sendFile(res, sfxFile(url.searchParams.get('name') || ''), req);
   m = /^\/api\/works\/([A-Za-z]+-\d+)\/video-upload$/.exec(p);
   if (m && req.method === 'POST') {
     const tmp = path.join(os.tmpdir(), `cc-upload-${Date.now()}`);

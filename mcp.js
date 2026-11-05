@@ -6,21 +6,23 @@ import { z } from 'zod';
 import { ensureData, load, markClaudeSeen, APP_DIR } from './lib/store.js';
 import { migrateConfig, productImages, folderMap, collectImages } from './lib/images.js';
 import { ACCOUNTS, DEFS, checkText, addProposal } from './lib/rules.js';
-import { listWorks, getWork, createWork, submitCaption } from './lib/works.js';
+import { listWorks, getWork, createWork, submitCaption, logCredits, creditsOf } from './lib/works.js';
 import { getRef, refPath, refsFor, submitAnalysis } from './lib/refs.js';
 import { submitDrafts, submitImages, submitUpscaled, imageForClaude, imageOf, setCuts } from './lib/imagework.js';
-import { submitStory, submitVideo, submitSubtitles, videoForClaude, framesForClaude, submitMotion, previewMotion, setCutImage } from './lib/videowork.js';
+import { submitStory, submitVideo, submitSubtitles, videoForClaude, framesForClaude, submitMotion, previewMotion, setCutImage, submitEdit, compareVideos, inspectAudio } from './lib/videowork.js';
+import { timeline as edlTimeline } from './lib/edl.js';
+import { listSfx } from './lib/sfx.js';
 import { MOTION_GUIDE, listTemplates, getTemplate, closeBrowser } from './lib/motion.js';
 import { workDir } from './lib/files.js';
 import { finalsConfig } from './lib/finalize.js';
 import { claudeQueue } from './lib/queue.js';
-import { applyHandover } from './lib/handover.js';
+import { applyMigrations } from './lib/handover.js';
 import sharp from 'sharp';
 import path from 'node:path';
 import fs from 'node:fs';
 
 ensureData();
-applyHandover();
+applyMigrations();
 migrateConfig();
 finalsConfig();
 const server = new McpServer({ name: 'contents-controller', version: '0.1.0' });
@@ -173,14 +175,16 @@ tool('list_queue', {
     '',
     '[영상 편집하기/고치기] video.story를 따른다. 컷에 fromImage가 있으면 그 이미지로 그 컷을 만든다: IMG-002는 그 작업의 최종 이미지, IMG-002:C3은 그 컷의 이미지, 쉼표로 여러 장이면(IMG-002:C5-1,IMG-002:C5-2) 그 순서대로 쓴다(get_work). 연결이 비었거나 바꿔야 하면 link_cut_image로 직접 연결한다. Higgsfield 영상 생성은 예상 크레딧을 먼저 알리고 확인을 받는다. 자막(대사)은 넣지 않는다(프로그램이 나라별로 입힌다).',
     '  · 글자 애니메이션·제목 카드·엔딩·레이아웃 틀이 있는 영상(스토리보드 kind=motion 컷)은 영상 파일을 직접 만들지 말고 submit_motion으로 코드(HTML)와 나라별 글자(motionAccounts 전부), 재료 영상(clips: Higgsfield 결과 주소, 올라온 영상 video:V1, 레퍼런스 등)을 보낸다. 처음 한 번 get_motion_guide를 읽는다. 영상 파일은 프로그램이 만들고 나라별 버전도 글자만 바꿔 프로그램이 만든다. 보내기 전에 preview_motion으로 2~3장면만 확인하면 좋다. 비슷한 영상은 list_motion_templates의 템플릿에서 시작한다(template).',
-    '  · 글자 애니메이션 없이 촬영본만 이어 붙이는 편집은 CapCut 연결로 하고 submit_video로 보낸다.',
-    '  · 고치기는 latestFix.notes(초 단위 시간과 메모)를 반영한다. 모션 그래픽이면 video.motion.html을 보고 html_edits로 바뀐 부분만 보낸다. video.motion.error가 있으면 그 오류부터 고친다. 필요한 장면만 view_video_frames로 확인한다.',
+    '  · 컷을 이어 붙이는 편집(원본 구간 in·out, 속도, 확대, 정지, 전환, 아이리스, 클립 소리, 효과음, 음악)은 ffmpeg로 직접 만들지 말고 submit_edit(편집 목록)로 보낸다. 프로그램이 만들고 버전마다 목록이 남는다. 글자 애니메이션도 overlay로 같이 넣을 수 있다. 효과음은 list_sfx의 이름으로, 소리 확인은 inspect_audio, 장면 확인은 view_video_frames(sheet·crop), 버전 비교는 compare_videos.',
+    '  · 사용자가 CapCut에서 직접 편집하는 경우에만 영상 파일(submit_video)을 받는다.',
+    '  · 생성(Higgsfield)할 때마다 log_credits로 크레딧을 그 작업에 기록한다.',
+    '  · 고치기는 latestFix.notes를 반영한다: 메모마다 t(완성 영상 초), at(컷과 그 컷 원본의 초), target(화면/클립 원본 소리/효과음/자막), 효과음이면 sfx(어떤 효과음)가 붙어 있다. 모션 그래픽이면 video.motion.html을 보고 html_edits로 바뀐 부분만 보낸다. video.motion.error가 있으면 그 오류부터 고친다. 필요한 장면만 view_video_frames로 확인한다.',
     '',
     '[자막 쓰기/고치기] languages의 모든 언어를 한 번에 submit_subtitles로 보낸다. 각 언어로 자연스럽게 쓰고, 줄마다 원문만 보고 옮긴 한국어 역번역(back)을 붙인다. 시간은 cuts와 duration에 맞춘다. 자막은 브랜드 자막 디자인으로 입혀지므로 한 줄이 maxCharsPerLine(계정별 글자 수)을 넘지 않게, 한 자막은 두 줄 이내로 쓴다. 영상을 다시 볼 필요는 없다.'
   ].join('\n'),
-  inputSchema: {}
-}, () => {
-  const q = claudeQueue();
+  inputSchema: { full: z.boolean().optional().describe('true면 스토리보드·레퍼런스 전체까지 (보통은 간단 모드로 충분)') }
+}, ({ full }) => {
+  const q = claudeQueue({ full });
   return q.length ? q : '지금 Claude가 처리할 일이 없어요.';
 });
 
@@ -361,12 +365,66 @@ tool('submit_subtitles', {
 
 tool('view_video_frames', {
   title: '영상 장면 보기',
-  description: '작업의 최신 영상에서 몇 장면을 작은 사진으로 본다(최대 6장). 수정 메모가 가리키는 시간만 골라 보면 토큰을 아낄 수 있다. times를 비우면 처음·중간·끝.',
-  inputSchema: { work_id: z.string(), times: z.array(z.number()).max(6).optional().describe('초 단위') }
-}, async ({ work_id, times }) => {
-  const r = await framesForClaude(work_id, times);
-  return { __content: [{ type: 'text', text: `${work_id} ${r.video.id} (${r.video.duration.toFixed(1)}초) · 장면: ${r.frames.map(f => `${f.t.toFixed(1)}초`).join(', ')}` }, ...r.frames.map(f => ({ type: 'image', data: f.data, mimeType: 'image/jpeg' }))] };
+  description: '작업 영상에서 장면을 본다. 수정 메모가 가리키는 시간만 골라 보면 토큰을 아낄 수 있다. sheet=true면 시간 라벨(완성 시각 · 컷 · 원본 시각)이 붙은 한 장(최대 12장면), crop={x,y,w,h}(%, 왼쪽 위 기준)이면 그 영역만 크게. video로 버전(V3 등)을 고를 수 있다. ffmpeg로 직접 만들지 말고 이것을 쓴다.',
+  inputSchema: { work_id: z.string(), times: z.array(z.number()).max(12).optional().describe('초 단위'), sheet: z.boolean().optional(), crop: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }).optional(), video: z.string().optional() }
+}, async ({ work_id, times, sheet, crop, video }) => {
+  const r = await framesForClaude(work_id, times, { sheet, crop, video });
+  return { __content: [{ type: 'text', text: `${work_id} ${r.video.id} (${r.video.duration.toFixed(1)}초) · 장면: ${(r.frames[0]?.sheet || r.frames.map(f => f.t)).map(t => `${t.toFixed(2)}초`).join(', ')}${crop ? ` · 확대 ${crop.x},${crop.y} ${crop.w}×${crop.h}%` : ''}` }, ...r.frames.map(f => ({ type: 'image', data: f.data, mimeType: 'image/jpeg' }))] };
 });
+
+const edlCut = z.object({
+  id: z.string().describe('C1, C5-1 …'),
+  src: z.string().optional().describe('원본: Higgsfield 결과 주소, Mac 파일 경로, video:V2(이 작업 영상), REF-003, IMG-002:C3 …'),
+  in: z.number().optional(), out: z.number().optional().describe('원본에서 쓸 구간(초). 이미지는 in=0, out=보여 줄 길이'),
+  speed: z.number().optional().describe('0.25~4'), freeze: z.number().optional().describe('끝 장면 정지 길이(초)'), fit: z.enum(['cover', 'contain']).optional(),
+  zoom: z.object({ from: z.number().optional(), to: z.number().optional(), x: z.number().optional(), y: z.number().optional() }).nullable().optional().describe('확대 배율 시작·끝, 중심 x·y %'),
+  transition: z.object({ type: z.enum(['cut', 'push', 'dissolve']), dir: z.enum(['left', 'right', 'up', 'down']).optional(), dur: z.number().optional() }).optional().describe('다음 컷으로 넘어가는 전환'),
+  mask: z.object({ type: z.literal('iris').optional(), x: z.number().optional(), y: z.number().optional(), r0: z.number().optional(), r1: z.number().optional(), at: z.number().optional(), dur: z.number().optional(), hold: z.number().optional() }).nullable().optional().describe('아이리스: 중심 %, 반지름 vmax %(0=닫힘, 150=열림), 컷 안 시작 초, 길이'),
+  audio: z.object({ on: z.boolean().optional(), volume: z.number().optional(), fadeIn: z.number().optional(), fadeOut: z.number().optional() }).optional(),
+  note: z.string().optional()
+});
+tool('submit_edit', {
+  title: '편집 목록(EDL) 보내기',
+  description: '영상 편집을 데이터로 보낸다. 프로그램이 이 목록으로 영상을 만들고 버전마다 목록을 남긴다(되돌리기 가능). ffmpeg로 직접 편집해서 submit_video로 보내지 말고 이것을 쓴다. 처음엔 cuts 전체, 고칠 땐 바뀐 컷만 id로 보내면 합쳐진다(필드에 null을 넣으면 지움). remove로 컷 빼기, order로 순서 바꾸기. 효과음은 sfx: [{name, at, volume}] (list_sfx의 이름; id(S1)를 주면 그 효과음을 고치고 delete:true면 뺀다). 글자 애니메이션은 overlay: {html | html_edits, texts}(get_motion_guide 약속 그대로). latestFix.notes에는 메모마다 at(컷, 그 컷 원본 시각)이 붙어 있으니 그대로 쓴다.',
+  inputSchema: {
+    work_id: z.string(),
+    cuts: z.array(edlCut).optional(), remove: z.array(z.string()).optional(), order: z.array(z.string()).optional(),
+    sfx: z.array(z.object({ id: z.string().optional(), name: z.string().optional(), at: z.number().optional(), volume: z.number().optional(), delete: z.boolean().optional(), note: z.string().optional() })).optional(),
+    music: z.object({ src: z.string(), volume: z.number().optional() }).nullable().optional(),
+    overlay: z.object({ html: z.string().optional(), html_edits: z.array(z.object({ find: z.string(), replace: z.string() })).optional(), texts: z.record(z.string(), z.record(z.string(), z.union([z.object({ text: z.string(), back: z.string() }), z.null()]))).optional() }).nullable().optional(),
+    width: z.number().optional(), height: z.number().optional(), background: z.string().optional(),
+    replace: z.boolean().optional().describe('true면 지금 목록을 버리고 새로'), from_version: z.string().optional().describe('V14처럼 그 버전의 목록에서 시작'),
+    note: z.string().optional().describe('사용자에게 남길 한국어 한 줄')
+  }
+}, async ({ work_id, ...input }) => {
+  const w = await submitEdit(work_id, input, 'Claude');
+  const tl = edlTimeline(w.video.edl);
+  return `${w.id} 편집 목록을 보냈어요: ${tl.cuts.map(c => `${c.id} ${c.start.toFixed(2)}–${c.end.toFixed(2)}`).join(', ')} (총 ${tl.duration.toFixed(2)}초). 프로그램이 영상을 만든 뒤 사용자가 검수해요. 실패하면 video.renderError에 이유가 남아요.`;
+});
+
+tool('compare_videos', {
+  title: '두 버전 비교',
+  description: '같은 작업의 두 영상 버전(V16, V17 등)이 같은지 0.5초마다 비교한다. meanDiff·maxDiff(0=같음), 가장 다른 시각을 준다. 편집 목록으로 다시 만든 결과가 예전 버전과 같은지 확인할 때 쓴다.',
+  inputSchema: { work_id: z.string(), a: z.string(), b: z.string() }
+}, ({ work_id, a, b }) => compareVideos(work_id, a, b));
+
+tool('inspect_audio', {
+  title: '소리 확인',
+  description: '영상의 from~to초(최대 30초) 소리를 0.1초마다 층별(클립 원본 소리·효과음·음악) 음량(dB), 가장 센 층, 주요 주파수(Hz)로 보여 주고 그 구간의 효과음 이름을 알려 준다. 소리를 직접 들을 수 없으니 "띵 소리", "말소리" 같은 메모가 어느 소리인지 이것으로 확인한다.',
+  inputSchema: { work_id: z.string(), from: z.number().optional(), to: z.number().optional(), video: z.string().optional() }
+}, ({ work_id, from, to, video }) => inspectAudio(work_id, from || 0, to ?? null, video));
+
+tool('list_sfx', {
+  title: '효과음 라이브러리',
+  description: '쓸 수 있는 효과음 이름과 설명(pop 뾱, buzz 진동음, beep 삐, ding 딩, wink 윙크 팅, murmur 웅얼웅얼 말소리, whoosh 휙, 사용자가 넣은 소리). submit_edit의 sfx에 name으로 넣는다.',
+  inputSchema: {}
+}, () => listSfx().map(s => ({ name: s.name, label: s.label, desc: s.desc, builtin: s.builtin })));
+
+tool('log_credits', {
+  title: '크레딧 사용 기록',
+  description: 'Higgsfield 등으로 생성할 때마다(이미지·영상·음악) 쓴 크레딧을 그 작업에 기록한다. 작업 카드에 합계가 보인다.',
+  inputSchema: { work_id: z.string(), amount: z.number(), what: z.string().describe('예: seedance 1080p 6초 C3'), tool: z.string().optional() }
+}, ({ work_id, amount, what, tool: t }) => { const w = logCredits(work_id, { amount, what, tool: t }); return `${w.id}에 크레딧 ${amount} 기록 (합계 ${creditsOf(w)})`; });
 
 tool('submit_caption', {
   title: '캡션 보내기',

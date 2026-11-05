@@ -78,11 +78,11 @@ test('영상: 스토리보드 → CapCut 편집 업로드 → 메모 수정 → 
 
   const seg = (t, b) => [{ start: 0, end: 3, text: t, back: b }, { start: 3, end: 6, text: t + '!', back: b }];
   assert.throws(() => V.submitSubtitles(w.id, { GLOBAL: seg('Hi', '안녕') }), /JP/);
-  assert.throws(() => V.submitSubtitles(w.id, { GLOBAL: seg('It heals your skin', '치유'), JP: seg('ダムティックスP7XLクリーム', '크림'), EU: seg('Crème', '크림') }), /브랜드 기준/);
-  V.submitSubtitles(w.id, { GLOBAL: seg('Your last step', '마지막 단계'), JP: seg('ダムティックスP7XLクリーム', '담틱스 크림'), EU: seg('La dernière étape', '마지막 단계') });
+  assert.throws(() => V.submitSubtitles(w.id, { GLOBAL: seg('It heals your skin', '치유'), JP: seg('Peptide 7X Lifting Cream クリーム', '크림'), EU: seg('Crème', '크림') }), /브랜드 기준/);
+  V.submitSubtitles(w.id, { GLOBAL: seg('Your last step', '마지막 단계'), JP: seg('Peptide 7X Lifting Cream クリーム', '리프팅 크림'), EU: seg('La dernière étape', '마지막 단계') });
   V.fixSubtitles(w.id, '더 짧게');
   assert.equal(claudeQueue().find(t => t.workId === w.id && t.kind === 'subtitles').task, '자막 고치기');
-  V.submitSubtitles(w.id, { GLOBAL: seg('Last step', '마지막'), JP: seg('ダムティックスP7XLクリーム', '담틱스 크림'), EU: seg('Dernière étape', '마지막') });
+  V.submitSubtitles(w.id, { GLOBAL: seg('Last step', '마지막'), JP: seg('Peptide 7X Lifting Cream クリーム', '리프팅 크림'), EU: seg('Dernière étape', '마지막') });
   assert.throws(() => V.finalConfirmVideo(w.id), /자막을 먼저 컨펌/);
   V.confirmSubtitles(w.id);
 

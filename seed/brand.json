@@ -80,5 +80,11 @@
     "seo": "기획 단계에서 핵심어(주 1, 보조 3~4)를 언어별 실제 검색어로. 리드 첫 두 문장과 H2에 핵심어. 테마가 제목을 H1으로 내보내면 본문에 H1 금지. SEO 메타(검색 제목, 메타 설명 80~120자, 영문 URL 핸들, 요약, 태그, 대표 이미지 1200×630 + alt)를 함께. 키워드 채우기·근거 없는 구조화 데이터 금지",
     "media": "설명형 영문 kebab-case 파일명(올린 뒤 이름 변경 금지), alt, 지연 로딩, WebP 품질 82~88, 본문 가로 약 1500px(3:2) 100~250KB. 영상은 H.264 mp4 1080 이하 약 1MB 무음 루프. 링크는 실제 있는 전체 주소만",
     "input": "영어가 기본 글, 일본어·프랑스어·한국어는 Translate & Adapt에 입력. 로그인·파일 업로드는 사용자가 직접"
+  },
+  "device": {
+    "allowed": "기능 소개: 「レッドLEDと振動のアプリケーター内蔵」「アプリケーターでマッサージしながら使える」 / \"Built-In Applicator\" · \"80 Hz micro-pulse\" / 사용감: 「なじませるように塗り広げる」「心地よい使い心地」 \"glides on smoothly\" \"a relaxing massage routine\"",
+    "banned": "기기 때문에 흡수·침투·효과가 좋아진다는 말: 吸収を高める, 浸透させる, 効果を高める, 引き締め効果, absorbs better, deeper penetration, boosts results, lifts / 흡수되는 느낌을 원하면 \"なじませる\" 사용감으로",
+    "deviceWords": "LED, 振動, EMS, 微電流, マイクロカレント, アプリケーター, device, applicator, vibration, micro-current, microcurrent, appareil, applicateur, vibration, 기기, 진동, 미세전류",
+    "effectWords": "吸収, 浸透, 効果, 効く, absorb, absorption, penetrate, penetration, boost, effect, absorbe, pénètre, efficacité, 흡수, 침투, 효과"
   }
 }

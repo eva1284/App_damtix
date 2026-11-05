@@ -344,3 +344,11 @@ details.inci p{font-size:12px;color:var(--muted);margin:0}
 .cuth{display:flex;align-items:center;gap:8px;margin:0 0 8px;flex-wrap:wrap}
 .cutbox input[type=text]{width:100%}
 .cutbox .drafts{grid-template-columns:repeat(auto-fill,minmax(140px,180px))}
+
+/* 편집 목록: 효과음 표시, 원본 구간 고르기 */
+.timeline .sfxmk{position:absolute;bottom:-2px;transform:translateX(-50%);font-size:13px;line-height:18px;width:18px;height:18px;border-radius:50%;background:var(--ink);color:var(--surface);text-align:center;cursor:grab;touch-action:none;z-index:3}
+.timeline .sfxmk:active{cursor:grabbing}
+.strip{display:flex;gap:2px;overflow-x:auto;padding:4px 0;user-select:none;touch-action:pan-x}
+.strip .sf{flex:none;border-radius:4px;opacity:.45;outline:2px solid transparent;cursor:pointer}
+.strip .sf.on{opacity:1;outline-color:var(--ink)}
+table.subs tr.changed td{background:var(--yellow-soft)}

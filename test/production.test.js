@@ -85,7 +85,7 @@ test('이미지 제작: 시안 → 고르기 → 생성 → 핀 수정 요청 �
 
   // 캡션도 컨펌된 상태로 만들어 두면 캡션 파일도 같이 저장된다
   W.requestCaption(w.id);
-  W.submitCaption({ id: w.id, text: 'ダムティックスGTCPセラムが肌を整えます。', backTranslation: '담틱스 GTCP 세럼이 피부를 정돈합니다.', hashtags: [{ tag: '韓国コスメ', ko: '한국 화장품' }] });
+  W.submitCaption({ id: w.id, text: 'Green Tea Callus PDRN Serum 美容液が肌を整えます。', backTranslation: '그린티 캘러스 PDRN 세럼 미용액이 피부를 정돈합니다.', hashtags: [{ tag: '韓国コスメ', ko: '한국 화장품' }] });
   W.confirmCaption(w.id);
 
   r = await IM.finalConfirm(w.id, [r.image.results[0].id]);

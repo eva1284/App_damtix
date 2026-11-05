@@ -33,12 +33,12 @@ test('캡션: 맡기기 → Claude 제출 → 수정 요청 → 다시 제출 �
   assert.ok(W.queue().some(q => q.workId === w.id && q.task === '캡션 쓰기' && q.direction === '질문으로 시작'));
 
   // 금지 표현이 있으면 저장하지 않는다
-  assert.throws(() => W.submitCaption({ id: w.id, text: 'ダムティックスGTCPセラムで肌を再生。', backTranslation: '피부 재생', hashtags: [] }), /브랜드 기준에 맞지 않아/);
+  assert.throws(() => W.submitCaption({ id: w.id, text: 'Green Tea Callus PDRN Serum 美容液で肌を再生。', backTranslation: '피부 재생', hashtags: [] }), /브랜드 기준에 맞지 않아/);
   // 역번역·해시태그 뜻이 없으면 받지 않는다
-  assert.throws(() => W.submitCaption({ id: w.id, text: 'ダムティックスGTCPセラムが肌を整えます。', backTranslation: '', hashtags: [] }), /역번역/);
-  assert.throws(() => W.submitCaption({ id: w.id, text: 'ダムティックスGTCPセラムが肌を整えます。', backTranslation: '정돈', hashtags: [{ tag: '韓国コスメ' }] }), /한국어 뜻/);
+  assert.throws(() => W.submitCaption({ id: w.id, text: 'Green Tea Callus PDRN Serum 美容液が肌を整えます。', backTranslation: '', hashtags: [] }), /역번역/);
+  assert.throws(() => W.submitCaption({ id: w.id, text: 'Green Tea Callus PDRN Serum 美容液が肌を整えます。', backTranslation: '정돈', hashtags: [{ tag: '韓国コスメ' }] }), /한국어 뜻/);
 
-  let r = W.submitCaption({ id: w.id, text: 'ダムティックスGTCPセラムが肌を整えます。', backTranslation: '담틱스 GTCP 세럼이 피부를 정돈합니다.', hashtags: [{ tag: '韓国コスメ', ko: '한국 화장품' }] });
+  let r = W.submitCaption({ id: w.id, text: 'Green Tea Callus PDRN Serum 美容液が肌を整えます。', backTranslation: '그린티 캘러스 PDRN 세럼 미용액이 피부를 정돈합니다.', hashtags: [{ tag: '韓国コスメ', ko: '한국 화장품' }] });
   assert.equal(r.caption.status, 'review');
   assert.equal(r.caption.current.hashtags[0].tag, '#韓国コスメ');
   assert.ok(!W.queue().some(q => q.workId === w.id));
@@ -50,7 +50,7 @@ test('캡션: 맡기기 → Claude 제출 → 수정 요청 → 다시 제출 �
   assert.equal(q.task, '캡션 고치기');
   assert.equal(q.fixRequest, '더 산뜻한 느낌으로');
 
-  r = W.submitCaption({ id: w.id, text: 'ダムティックスGTCPセラムで、さっぱり整う肌へ。', backTranslation: '담틱스 GTCP 세럼으로 산뜻하게 정돈된 피부로.', hashtags: [] });
+  r = W.submitCaption({ id: w.id, text: 'Green Tea Callus PDRN Serum 美容液で、さっぱり整う肌へ。', backTranslation: '담틱스 GTCP 세럼으로 산뜻하게 정돈된 피부로.', hashtags: [] });
   assert.equal(r.caption.versions.length, 1);
   assert.equal(W.confirmCaption(w.id).caption.status, 'confirmed');
   assert.equal(W.reopenCaption(w.id).caption.status, 'review');

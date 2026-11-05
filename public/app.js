@@ -59,7 +59,7 @@ const workLink = w => `#work-${w.id}`;
 const cmdBox = () => `<div class="cmd"><span class="small">Claude 데스크톱 앱에 입력</span><code id="cmdtxt">contents controller 대기 작업 처리해줘</code><button class="btn sm" data-act="copycmd">복사</button></div>`;
 function workRow(w) {
   const p = prodBy(w.product);
-  return `<a class="task" href="${workLink(w)}" style="text-decoration:none"><div class="thumb" style="display:grid;place-items:center;font-size:12px;color:var(--muted)">${S.types[w.type].label}</div><div style="min-width:0"><div class="t">${esc(w.title)}</div><div class="m"><span class="chip acc">${esc(accLabel(w))}</span><span class="code">${w.id} · ${w.product}${p ? '' : ''}</span><span class="small muted">${md(w.date)} 게시</span></div></div>${stateChip(w)}</a>`;
+  return `<a class="task" href="${workLink(w)}" style="text-decoration:none"><div class="thumb" style="display:grid;place-items:center;font-size:12px;color:var(--muted)">${S.types[w.type].label}</div><div style="min-width:0"><div class="t">${esc(w.title)}</div><div class="m"><span class="chip acc">${esc(accLabel(w))}</span><span class="code">${w.id} · ${w.product}${p ? '' : ''}</span><span class="small muted">${md(w.date)} 게시</span>${w.credits?.length ? `<span class="small muted">· 크레딧 ${Math.round(w.credits.reduce((a, c) => a + c.amount, 0) * 100) / 100}</span>` : ''}</div></div>${stateChip(w)}</a>`;
 }
 
 /* ---------- 홈 ---------- */
@@ -195,7 +195,7 @@ function vWork(id) {
       <div class="row" style="margin-top:16px"><button class="btn" data-act="weclose">취소</button><span class="spacer"></span><button class="btn primary" data-act="wesave">저장</button></div>`
     : `<dl class="kv"><dt>게시일</dt><dd>${esc(w.date)} (${DOW[(parseYmd(w.date).getDay() + 6) % 7]})</dd><dt>계정</dt><dd>${esc(accLabel(w))}${w.account !== 'SHOP' ? ` · ${esc(S.accounts[w.account].handle)} · ${esc(S.accounts[w.account].lang)}` : ''}</dd><dt>제품</dt><dd>${esc(w.product)} · ${esc(p?.names.KR || '')}${w.account === 'JP' && p?.names.JP ? ` · ${esc(p.names.JP)}` : ''}</dd><dt>기획 메모</dt><dd>${esc(w.memo) || '<span class="muted">비어 있음</span>'}</dd></dl>`;
   const make = { image: '', video: '스토리보드 → 제작 → 타임라인 검수는 4단계에서 열려요.', html: '섹션 구성 → 제작 → PC·모바일 미리보기 검수는 5단계에서 열려요.' }[w.type];
-  return `<div class="row"><a class="btn sm" href="#calendar">‹ 캘린더</a></div>` + head(esc(w.title), `${w.id} · ${S.types[w.type].label} · ${md(w.date)} 게시`) + `
+  return `<div class="row"><a class="btn sm" href="#calendar">‹ 캘린더</a></div>` + head(esc(w.title), `${w.id} · ${S.types[w.type].label} · ${md(w.date)} 게시${w.credits?.length ? ` · 크레딧 ${Math.round(w.credits.reduce((a, c) => a + c.amount, 0) * 100) / 100} (${w.credits.length}건)` : ''}`) + `
   <section class="panel"><div class="panel-h"><h2>기획</h2>${E ? '<span class="chip st-warn">수정 중</span>' : '<button class="btn sm" data-act="weopen">수정</button>'}</div>${plan}</section>
   ${refsPanel(w)}
   ${w.type === 'image' ? imagePanel(w) : w.type === 'video' ? videoPanel(w) : `<section class="panel"><div class="panel-h"><h2>${S.types[w.type].label} 제작</h2><span class="chip st-plan">준비 중</span></div><p class="small muted" style="margin:0">${make}</p></section>`}
@@ -510,6 +510,80 @@ function savePinsSoon(w, resultId) {
 const subColorOf = () => ui.subColor || S.brand.subtitle?.color || 'auto';
 const fmtT = s => { const v = Math.max(0, Number(s) || 0); return `${Math.floor(v / 60)}:${(v % 60).toFixed(1).padStart(4, '0')}`; };
 function vNotesOf(w) { return ui.vNotes || w.video.notes || []; }
+
+/* ---------- 편집 목록(EDL): 화면에서 직접 고치기 ---------- */
+const sfxLabel = name => S.sfx.find(x => x.name === name)?.label || name;
+// 화면에서 고치는 중인 편집 (적용 전): 컷 구간과 효과음
+function draftOf(w) {
+  const edl = w.video.videos[0]?.edl;
+  if (!ui.edlDraft || ui.edlDraft.work !== w.id) ui.edlDraft = { work: w.id, cuts: {}, sfx: JSON.parse(JSON.stringify(edl?.sfx || [])) };
+  return ui.edlDraft;
+}
+const edlSfx = w => (ui.edlDraft?.work === w.id ? ui.edlDraft.sfx : w.video.videos[0]?.edl?.sfx) || [];
+function edlDirty(w) {
+  const d = ui.edlDraft;
+  if (!d || d.work !== w.id) return false;
+  return Object.keys(d.cuts).length > 0 || JSON.stringify(d.sfx.map(({ fresh, ...x }) => x)) !== JSON.stringify(w.video.videos[0]?.edl?.sfx || []);
+}
+function edlPatch(w) {
+  const d = draftOf(w), old = w.video.videos[0].edl.sfx || [];
+  const sfx = [...d.sfx.map(x => x.fresh ? { name: x.name, at: x.at, volume: x.volume } : { id: x.id, name: x.name, at: x.at, volume: x.volume }), ...old.filter(o => !d.sfx.some(x => x.id === o.id)).map(o => ({ id: o.id, delete: true }))];
+  return { cuts: Object.entries(d.cuts).map(([id, c]) => ({ id, ...c })), sfx };
+}
+// 메모 시각 → 컷과 그 컷 원본의 시각 (저장된 값이 없으면 화면에서 계산)
+function noteAt(w, n) {
+  const a = n.at || mapLocal(w.video.videos[0], n.t);
+  return a ? `${a.cut} 원본 ${Number(a.src).toFixed(2)}초${a.freeze ? ' (정지)' : ''}` : '';
+}
+function mapLocal(vid, t) {
+  const tl = vid?.timeline?.cuts, edl = vid?.edl;
+  if (!tl || !edl) return null;
+  let k = tl.findIndex((r, i) => t < r.end - (r.d ? r.d / 2 : 0) || i === tl.length - 1);
+  const r = tl[k], c = edl.cuts[k], local = Math.max(0, t - r.start);
+  return { cut: c.id, src: Math.round((c.in + Math.min(local, r.play) * c.speed) * 100) / 100, freeze: local > r.play };
+}
+function edlPanel(w, vid) {
+  const edl = vid.edl, d = ui.edlDraft?.work === w.id ? ui.edlDraft : null, dirty = edlDirty(w);
+  const tl = vid.timeline?.cuts || [];
+  const cutRow = (c, i) => { const ch = d?.cuts[c.id]; const inT = ch?.in ?? c.in, outT = ch?.out ?? c.out; return `<tr${ch ? ' class="changed"' : ''}><td class="tc"><b>${esc(c.id)}</b></td><td class="tc">${fmtT(tl[i]?.start || 0)}–${fmtT(tl[i]?.end || 0)}</td><td class="tc">${inT.toFixed(2)}–${outT.toFixed(2)}초${ch ? ' <span class="chip st-warn">바꿈</span>' : ''}${/\.(png|jpe?g|webp)$/i.test(c.src) ? '' : `<div style="margin-top:4px"><button class="btn sm" data-strip="${c.id}">구간 고르기</button></div>`}</td><td class="small">${[c.speed !== 1 ? `속도 ×${c.speed}` : '', c.zoom ? `확대 ${c.zoom.from}→${c.zoom.to}` : '', c.freeze ? `정지 ${c.freeze}초` : '', c.transition?.type !== 'cut' ? `${{ push: '밀기', dissolve: '디졸브' }[c.transition.type]} ${c.transition.dur}초` : '', c.mask ? '아이리스' : '', c.audio?.on === false ? '소리 끔' : ''].filter(Boolean).join(' · ')}</td></tr>${ui.strip?.cut === c.id ? `<tr><td colspan="4">${stripHtml(w, c)}</td></tr>` : ''}`; };
+  const sfx = edlSfx(w);
+  return `<details class="inci" style="margin-top:16px" ${ui.edlOpen || dirty ? 'open' : ''}><summary data-edlopen>편집 목록 · ${edl.cuts.length}컷 · 효과음 ${sfx.length}개${dirty ? ' · 바꾼 내용 있음' : ''}</summary>
+    <p class="small muted" style="margin:8px 0">컷의 원본 구간과 효과음은 여기서 직접 고칠 수 있어요. 적용하면 Claude 차례 없이 프로그램이 바로 다시 만들어요 (토큰 안 씀).</p>
+    <div class="tbl"><table class="subs"><thead><tr><th>컷</th><th>영상 속 위치</th><th>원본 구간</th><th>효과</th></tr></thead><tbody>${edl.cuts.map(cutRow).join('')}</tbody></table></div>
+    <h3 style="margin:16px 0 8px">효과음</h3>
+    <div class="notes">${sfx.map((x, i) => `<div class="note" style="grid-template-columns:auto minmax(0,1fr) auto"><button class="btn sm" data-vseek="${x.at}" style="min-height:36px">${x.at.toFixed(2)}초</button><div class="row" style="gap:6px;flex-wrap:wrap"><select class="btn" data-sfxname="${i}" style="min-height:36px">${S.sfx.map(o => `<option value="${o.name}" ${o.name === x.name ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select><label class="small muted" style="display:flex;gap:4px;align-items:center">시각<input type="number" step="0.05" min="0" data-sfxat="${i}" value="${x.at}" style="width:84px"></label><label class="small muted" style="display:flex;gap:4px;align-items:center">음량<input type="number" step="0.1" min="0" max="2" data-sfxvol="${i}" value="${x.volume}" style="width:64px"></label><button class="btn sm" data-sfxplay="${esc(x.name)}" aria-label="미리 듣기">▶</button></div><button class="btn sm" data-sfxdel="${i}" aria-label="효과음 빼기">×</button></div>`).join('') || '<p class="empty">효과음이 없어요.</p>'}</div>
+    <div class="row" style="margin-top:8px"><select class="btn" id="sfxadd-name" aria-label="더할 효과음" style="min-height:44px">${S.sfx.map(o => `<option value="${o.name}">${esc(o.label)}</option>`).join('')}</select><button class="btn sm" data-vid="sfxadd">지금 위치에 효과음 더하기</button><button class="btn sm" data-sfxplay-sel>▶ 미리 듣기</button><span class="small muted">타임라인의 ♪를 끌어서 옮길 수도 있어요.</span></div>
+    ${dirty ? `<div class="row" style="margin-top:12px"><button class="btn" data-vid="edlreset">되돌리기</button><span class="spacer"></span><button class="btn primary" data-vid="edlapply">바꾼 내용으로 다시 만들기</button></div>` : ''}
+  </details>`;
+}
+// 원본 클립 프레임 띠: 끌어서 쓸 구간 고르기
+function stripHtml(w, c) {
+  const st = ui.strip;
+  if (!st?.meta) return '<p class="empty">프레임 띠를 만드는 중…</p>';
+  const m = st.meta, ch = draftOf(w).cuts[c.id] || {}, inT = st.sel?.[0] ?? ch.in ?? c.in, outT = st.sel?.[1] ?? ch.out ?? c.out;
+  const fw = 72, fh = Math.round(fw * m.frameHeight / Math.max(1, m.frameWidth || m.frameHeight * 9 / 16));
+  const frames = Array.from({ length: m.count }, (_, i) => { const t = i * m.step, on = t + m.step > inT && t < outT; const x = (i % m.cols), y = Math.floor(i / m.cols); return `<div class="sf${on ? ' on' : ''}" data-sf="${i}" title="${t.toFixed(2)}초" style="width:${fw}px;height:${fh}px;background:url('${workFile(w, m.file)}') -${x * fw}px -${y * fh}px / ${m.cols * fw}px ${m.rows * fh}px"></div>`; }).join('');
+  return `<div class="small" style="margin:4px 0">원본 ${m.duration.toFixed(2)}초 · 0.25초 간격 · 쓸 구간을 끌어서 고르세요: <b>${inT.toFixed(2)}–${outT.toFixed(2)}초</b></div><div class="strip" data-stripcut="${c.id}" data-step="${m.step}" data-dur="${m.duration}">${frames}</div>
+    <div class="row" style="margin-top:8px"><button class="btn sm" data-stripclose>닫기</button><span class="spacer"></span><button class="btn sm primary" data-stripuse="${c.id}" ${st.sel ? '' : 'disabled'}>이 구간 사용</button></div>`;
+}
+async function openStrip(w, cutId) {
+  ui.strip = { cut: cutId, meta: null, sel: null }; ui.edlOpen = true; render();
+  try { const meta = await api(`/api/works/${w.id}/strip?cut=${encodeURIComponent(cutId)}`); if (ui.strip?.cut === cutId) { ui.strip.meta = meta; render(); } } catch (e) { ui.strip = null; render(); toast(e.message); }
+}
+// 보낸 수정 요청: Claude가 고치기 전까지 고치거나 지울 수 있다
+function fixEditor(w, fix) {
+  if (!ui.fixEdit) return `<div class="notes" style="margin-top:12px">${(fix.notes || []).map(n => `<div class="check" style="min-height:36px"><span class="code" style="width:64px">${fmtT(n.t)}</span><span class="small muted" style="width:110px">${esc(S.noteTargets[n.target || 'screen'])}${n.at ? ` · ${esc(n.at.cut)}` : ''}</span><span class="small" style="flex:1;min-width:0">${esc(n.text)}</span></div>`).join('')}</div><div class="row" style="margin-top:8px"><span class="small muted">Claude가 고치기 전이라면 보낸 메모를 고치거나 지울 수 있어요.</span><span class="spacer"></span><button class="btn sm" data-fixeditopen>보낸 메모 고치기</button></div>`;
+  return `<label class="small" style="display:block;margin-top:12px">전체 메모<textarea id="fixedit-note">${esc(fix.note || '')}</textarea></label>
+    <div class="notes" style="margin-top:8px">${ui.fixEdit.map((n, i) => `<div class="note" style="grid-template-columns:auto minmax(0,1fr) auto"><span class="code">${fmtT(n.t)}</span><input type="text" data-fixnote="${i}" value="${esc(n.text)}"><button class="btn sm" data-fixnotedel="${i}" aria-label="메모 지우기">×</button></div>`).join('') || '<p class="empty">메모가 없어요.</p>'}</div>
+    <div class="row" style="margin-top:8px"><button class="btn" data-fixeditcancel>취소</button><span class="spacer"></span><button class="btn primary" data-vid="fixsave">고친 메모 저장</button></div>`;
+}
+function versionList(w) {
+  const v = w.video;
+  if (v.videos.length < 2) return '';
+  return `<details class="inci" style="margin-top:12px"><summary>지난 버전 ${v.videos.length - 1}개</summary><div class="notes" style="margin-top:8px">${v.videos.slice(1, 30).map(x => `<div class="check" style="min-height:40px"><b class="small" style="width:44px">${x.id}</b><span class="small muted" style="flex:1;min-width:0">${{ edl: '편집 목록', motion: '모션 그래픽', upload: '내가 올림', claude: 'Claude' }[x.source] || x.source} · ${x.duration.toFixed(1)}초${x.restoredFrom ? ` · ${x.restoredFrom}에서 되돌림` : ''}${x.note ? ` · ${esc(x.note)}` : ''}</span><a class="btn sm" href="${workFile(w, x.file)}" target="_blank" rel="noopener">보기</a><button class="btn sm" data-vrestore="${x.id}">이 버전으로 되돌리기</button></div>`).join('')}</div></details>`;
+}
+let sfxAudio = null;
+function playSfx(name) { try { sfxAudio?.pause(); sfxAudio = new Audio(`/sfx-file?name=${encodeURIComponent(name)}`); sfxAudio.play().catch(() => toast('소리를 재생하지 못했어요.')); } catch { toast('소리를 재생하지 못했어요.'); } }
 let vNotesTimer = null;
 function saveVNotesSoon(w) { clearTimeout(vNotesTimer); vNotesTimer = setTimeout(() => api(`/api/works/${w.id}/video-notes`, { notes: ui.vNotes }).then(r => { S = r.state; }).catch(e => toast(e.message)), 600); }
 function cutRefs(w, i) {
@@ -542,11 +616,12 @@ function videoPanel(w) {
     <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn primary" data-vid="request">스토리보드 맡기기</button></div>`;
   else if (v.stage === 'rendering') {
     const j = v.job || {};
-    body = `<div class="status"><span class="dot warn"></span><div class="small">Claude가 보낸 모션 그래픽 코드를 영상으로 만드는 중… ${j.total ? `${Math.round((j.done || 0) / j.total * 100)}%` : ''}<div class="muted" style="margin-top:4px">${v.motion ? `${v.motion.comp.duration}초 · ${v.motion.comp.width}×${v.motion.comp.height}${v.motion.template ? ` · 템플릿 ${esc(v.motion.template)}` : ''} · ` : ''}보통 1~3분 걸려요. 이 화면을 닫아도 계속 진행돼요.</div></div></div>${S.info.browser ? '' : '<div class="warnbox" style="margin-top:12px">Mac에 Google Chrome이 없어서 영상을 만들 수 없어요. Chrome을 설치하면 이어서 만들어요.</div>'}`;
+    body = `<div class="status"><span class="dot warn"></span><div class="small">${v.renderKind === 'edl' ? '편집 목록으로 영상을 만드는 중…' : 'Claude가 보낸 모션 그래픽 코드를 영상으로 만드는 중…'} ${j.total ? `${Math.round((j.done || 0) / j.total * 100)}%` : ''}<div class="muted" style="margin-top:4px">${v.renderKind === 'edl' && v.edl ? `${v.edl.cuts.length}컷 · ` : v.motion ? `${v.motion.comp.duration}초 · ${v.motion.comp.width}×${v.motion.comp.height}${v.motion.template ? ` · 템플릿 ${esc(v.motion.template)}` : ''} · ` : ''}보통 1~3분 걸려요. 이 화면을 닫아도 계속 진행돼요.</div></div></div>${S.info.browser ? '' : '<div class="warnbox" style="margin-top:12px">Mac에 Google Chrome이 없어서 영상을 만들 수 없어요. Chrome을 설치하면 이어서 만들어요.</div>'}`;
   }
   else if (['story_requested', 'story_fix', 'make', 'make_fix'].includes(v.stage)) {
     const fix = v.fixes?.[0];
-    body = `${v.motion?.error ? `<div class="warnbox" style="margin:0 0 12px">모션 그래픽 영상을 만들지 못했어요. Claude가 고칠 차례예요: ${esc(v.motion.error)}</div>` : ''}`+`<div class="status"><span class="dot"></span><div class="small">${esc(label)}.${v.stage.startsWith('make') ? ' Higgsfield 영상 생성은 Claude가 예상 크레딧을 먼저 알려 드려요.' : ''}${fix && v.stage.endsWith('fix') ? `<div class="muted" style="margin-top:4px">수정 요청: ${esc(fix.note || '')}${fix.notes?.length ? ` (타임라인 메모 ${fix.notes.length}개)` : ''}</div>` : ''}</div></div>${cmdBox()}
+    body = `${v.motion?.error ? `<div class="warnbox" style="margin:0 0 12px">모션 그래픽 영상을 만들지 못했어요. Claude가 고칠 차례예요: ${esc(v.motion.error)}</div>` : ''}${v.renderError ? `<div class="warnbox" style="margin:0 0 12px">편집 목록으로 영상을 만들지 못했어요. Claude가 고칠 차례예요: ${esc(v.renderError)}</div>` : ''}`+`<div class="status"><span class="dot"></span><div class="small">${esc(label)}.${v.stage.startsWith('make') ? ' Higgsfield 영상 생성은 Claude가 예상 크레딧을 먼저 알려 드려요.' : ''}${fix && v.stage.endsWith('fix') ? `<div class="muted" style="margin-top:4px">수정 요청: ${esc(fix.note || '')}${fix.notes?.length ? ` (타임라인 메모 ${fix.notes.length}개)` : ''}</div>` : ''}</div></div>${cmdBox()}
+      ${v.stage === 'make_fix' && fix?.kind === 'video' ? fixEditor(w, fix) : ''}
       ${v.stage.startsWith('make') ? '<div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn sm" data-vmethod="capcut">CapCut에서 직접 편집으로 바꾸기</button></div>' : ''}`;
   } else if (v.stage === 'story_review') {
     const imgs = S.works.filter(x => x.type === 'image' && x.id !== w.id && (x.image?.results?.length || x.image?.final || x.image?.cuts?.length > 1));
@@ -570,7 +645,8 @@ function videoPanel(w) {
       <div class="drop mini" data-vdrop="${w.id}" style="margin-top:12px"><span class="small">영상 파일을 여기에 끌어다 놓거나</span><div class="addbar"><label class="btn sm primary" for="vfile-${w.id}">영상 파일 고르기</label><input type="file" id="vfile-${w.id}" data-vfile="${w.id}" accept="video/*" hidden><span class="spacer"></span><button class="btn sm" data-vmethod="claude">Claude에게 편집 맡기기</button></div></div>`;
   } else if (v.stage === 'result_review') {
     const notes = vNotesOf(w);
-    const cuts = v.story?.cuts || [];
+    const cuts = vid.timeline?.cuts || v.story?.cuts || [];
+    const sfxList = edlSfx(w);
     const markets = ['GLOBAL', 'JP', 'EU'].filter(a => p.markets[S.accounts[a].market]);
     const versions = ui.versions || v.versions || [w.account];
     body = `${vid.note ? `<p class="small" style="margin:0 0 12px">${vid.source === 'upload' ? '나' : 'Claude'}: ${esc(vid.note)}</p>` : ''}
@@ -578,15 +654,18 @@ function videoPanel(w) {
         <video id="vp" src="${workFile(w, vid.file)}" controls playsinline preload="metadata" style="width:100%;max-height:560px;background:#000;border-radius:11px"></video>
         <div class="timeline" id="vtl" data-dur="${vid.duration}" role="slider" aria-label="타임라인" tabindex="0">
           ${cuts.map(c => `<div class="seg" style="left:${c.start / vid.duration * 100}%;width:calc(${Math.max(0, Math.min(c.end, vid.duration) - c.start) / vid.duration * 100}% - 4px);margin-left:2px">${c.id}</div>`).join('')}
-          ${notes.map(n => `<span class="mk" style="left:${n.t / vid.duration * 100}%"></span>`).join('')}<div class="head" id="vhead" style="left:0"></div></div>
+          ${notes.map(n => `<span class="mk" style="left:${n.t / vid.duration * 100}%"></span>`).join('')}
+          ${sfxList.map(x => `<span class="sfxmk" data-sfxdrag="${x.id}" title="${esc(sfxLabel(x.name))} ${x.at.toFixed(2)}초 (끌어서 옮기기)" style="left:${x.at / vid.duration * 100}%">♪</span>`).join('')}<div class="head" id="vhead" style="left:0"></div></div>
         <div class="ticks"><span>0:00</span><span>${fmtT(vid.duration / 2)}</span><span>${fmtT(vid.duration)}</span></div>
-        <div class="row" style="margin-top:12px"><input type="text" id="vnote" placeholder="지금 지점에 남길 수정사항" style="flex:1;min-width:0"><button class="btn sm primary" data-vid="addnote">메모 추가</button></div>
+        <div class="row" style="margin-top:12px"><select class="btn" id="vtarget" aria-label="메모 대상" style="min-height:44px">${Object.entries(S.noteTargets).map(([k, l]) => `<option value="${k}" ${ui.vTarget === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${ui.vTarget === 'sfx' && sfxList.length ? `<select class="btn" id="vsfx" aria-label="어떤 효과음" style="min-height:44px"><option value="">가까운 효과음</option>${sfxList.map(x => `<option value="${x.id}">${x.id} ${esc(sfxLabel(x.name))} ${x.at.toFixed(1)}초</option>`).join('')}</select>` : ''}<input type="text" id="vnote" placeholder="지금 지점에 남길 수정사항" style="flex:1;min-width:160px"><button class="btn sm primary" data-vid="addnote">메모 추가</button></div>
         <p class="small muted" style="margin:8px 0 0">${vid.duration.toFixed(1)}초 · ${vid.width}×${vid.height}${vid.audio ? '' : ' · 소리 없음'}</p>
       </div><div>
         <h3>수정사항 <span class="small muted" style="font-weight:400">${notes.length}개</span></h3>
-        <div class="notes" style="margin-top:8px">${notes.map((n, i) => `<div class="note" style="grid-template-columns:auto minmax(0,1fr) auto"><button class="btn sm" data-vseek="${n.t}" style="min-height:36px" aria-label="${fmtT(n.t)}로 이동">${fmtT(n.t)}${n.t2 ? `–${fmtT(n.t2)}` : ''}</button><input type="text" id="vn-${i}" data-vnote="${i}" value="${esc(n.text)}" placeholder="고칠 점"><span class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sm" data-vrange="${i}" title="지금 지점을 구간 끝으로" style="min-height:36px">끝</button><button class="btn sm" data-vdel="${i}" style="min-height:36px" aria-label="메모 지우기">×</button></span></div>`).join('') || '<p class="empty">재생하다가 고칠 곳에서 메모를 추가하세요.</p>'}</div>
+        <div class="notes" style="margin-top:8px">${notes.map((n, i) => `<div class="note" style="grid-template-columns:auto minmax(0,1fr) auto"><button class="btn sm" data-vseek="${n.t}" style="min-height:36px" aria-label="${fmtT(n.t)}로 이동">${fmtT(n.t)}${n.t2 ? `–${fmtT(n.t2)}` : ''}</button><div style="min-width:0"><div class="small muted" style="margin-bottom:2px">${esc(S.noteTargets[n.target || 'screen'])}${n.sfx ? ` · ${esc(n.sfx.id)} ${esc(sfxLabel(n.sfx.name))}` : ''}${noteAt(w, n) ? ` · ${esc(noteAt(w, n))}` : ''}</div><input type="text" id="vn-${i}" data-vnote="${i}" value="${esc(n.text)}" placeholder="고칠 점" style="width:100%"></div><span class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sm" data-vrange="${i}" title="지금 지점을 구간 끝으로" style="min-height:36px">끝</button><button class="btn sm" data-vdel="${i}" style="min-height:36px" aria-label="메모 지우기">×</button></span></div>`).join('') || '<p class="empty">재생하다가 고칠 곳에서 메모를 추가하세요.</p>'}</div>
       </div></div>
       ${vid.source === 'motion' ? motionTexts(w) : ''}
+      ${vid.edl ? edlPanel(w, vid) : ''}
+      ${versionList(w)}
       ${ui.vFixOpen === 'video' ? `<label class="small" style="display:block;margin-top:16px">전체 메모 (선택)<textarea id="vfix-note" placeholder="예: 전체 길이 2초 줄이기"></textarea></label><div class="row" style="margin-top:12px"><button class="btn" data-vid="fixcancel">취소</button><span class="spacer"></span><button class="btn primary" data-vid="fixvideo">수정 요청 보내기 (${v.method === 'claude' ? 'Claude가 고쳐요' : 'CapCut에서 내가 고쳐요'})</button></div>`
         : `<div class="panel" style="margin-top:16px;padding:16px;background:var(--fill);border:0"><h3>영상 컨펌 후 만들 버전</h3>
           <div class="row" style="margin-top:8px">${markets.map(a => `<label class="small" style="display:flex;gap:8px;align-items:center;min-height:44px;margin-right:12px"><input type="checkbox" data-version="${a}" ${versions.includes(a) ? 'checked' : ''} ${a === w.account ? 'disabled' : ''}> ${a} · ${esc(S.accounts[a].lang)}</label>`).join('')}</div>
@@ -620,12 +699,18 @@ function videoPanel(w) {
   }
   return `<section class="panel"><div class="panel-h"><h2>영상 제작${v.method && v.stage !== 'none' ? ` <span class="small muted" style="font-weight:400">${v.method === 'claude' ? 'Claude가 편집' : 'CapCut에서 내가 편집'}</span>` : ''}</h2><span class="chip ${workState({ ...w, caption: { status: 'none' } }).c}">${esc(label)}</span></div>${body}</section>`;
 }
+function sfxLibrary() {
+  return `<section class="panel"><div class="panel-h"><h2>효과음 라이브러리 <span class="small muted" style="font-weight:400">${S.sfx.length}개</span></h2><label class="btn sm" style="cursor:pointer">효과음 넣기 (wav·mp3·m4a)<input type="file" accept="audio/*,.wav,.mp3,.m4a,.aif,.aiff" data-sfxfile hidden></label></div>
+    <p class="small muted" style="margin:-8px 0 12px">Claude는 소리를 들을 수 없어서 이름으로 골라요. 여기서 미리 듣고, 영상 검수 화면의 편집 목록에서 넣거나 옮길 수 있어요.</p>
+    <div class="notes">${S.sfx.map(x => `<div class="check" style="min-height:44px"><button class="btn sm" data-sfxplay="${esc(x.name)}" aria-label="${esc(x.label)} 미리 듣기">▶</button><b class="small" style="width:120px">${esc(x.label)}</b><span class="code" style="width:80px">${esc(x.name)}</span><span class="small muted" style="flex:1;min-width:0">${esc(x.desc || '')}</span>${x.builtin ? '<span class="small muted">기본</span>' : `<button class="btn sm" data-sfxlibdel="${esc(x.name)}">지우기</button>`}</div>`).join('')}</div></section>`;
+}
 function vVideo() {
   const ws = S.works.filter(w => w.type === 'video');
   const groups = [['내 차례', w => workState(w).c === 'st-you'], ['Claude 차례', w => workState(w).c === 'st-claude'], ['기획', w => workState(w).c === 'st-plan'], ['완료', w => workState(w).c === 'st-done']];
   return head('영상', '스토리보드 → 편집(Claude 또는 CapCut) → 타임라인 검수 → 나라별 자막 → 최종 컨펌 순서로 진행해요. 새 영상 작업은 캘린더에서 만들어요.') + `
   <div class="row"><span class="spacer"></span><a class="btn primary" href="#calendar">캘린더에서 새 작업</a></div>
-  ${groups.map(([t, f]) => { const list = ws.filter(f); return list.length ? `<section class="panel"><div class="panel-h"><h2>${t} <span class="small muted" style="font-weight:400">${list.length}건</span></h2></div><div class="tasks">${list.map(workRow).join('')}</div></section>` : ''; }).join('') || '<p class="empty">아직 영상 작업이 없어요.</p>'}`;
+  ${groups.map(([t, f]) => { const list = ws.filter(f); return list.length ? `<section class="panel"><div class="panel-h"><h2>${t} <span class="small muted" style="font-weight:400">${list.length}건</span></h2></div><div class="tasks">${list.map(workRow).join('')}</div></section>` : ''; }).join('') || '<p class="empty">아직 영상 작업이 없어요.</p>'}
+  ${sfxLibrary()}`;
 }
 async function uploadVideoFile(workId, file) {
   if (!file) return;
@@ -690,11 +775,26 @@ document.addEventListener('click', e => {
     ui.pins[r.id] = [...pinsOf(r), { x: +((e.clientX - rect.left) / rect.width * 100).toFixed(1), y: +((e.clientY - rect.top) / rect.height * 100).toFixed(1), note: '' }];
     render(); const ins = document.querySelectorAll(`[data-pin="${r.id}"]`); ins[ins.length - 1]?.focus(); savePinsSoon(w, r.id); return;
   }
+  const sm = e.target.closest('summary');
+  if (sm?.dataset.edlopen !== undefined) { ui.edlOpen = !sm.parentElement.open; return; }
+  if (sm?.dataset.motionopen !== undefined) { ui.motionOpen = !sm.parentElement.open; return; }
   const t = e.target.closest('button,a[data-btab]'); if (!t) return;
   if (t.disabled) return;
   const d = t.dataset;
   const wid = () => (/^#work-([A-Za-z]+-\d+)$/.exec(location.hash) || [])[1]?.toUpperCase();
   const cw = () => S.works.find(x => x.id === wid());
+  // 편집 목록 직접 고치기
+  if (d.strip) { const w = cw(); if (w) openStrip(w, d.strip); return; }
+  if (d.stripclose !== undefined) { ui.strip = null; render(); return; }
+  if (d.stripuse) { const w = cw(); const sel = ui.strip?.sel; if (w && sel) { draftOf(w).cuts[d.stripuse] = { in: sel[0], out: sel[1] }; ui.strip = null; render(); toast(`${d.stripuse}의 원본 구간을 ${sel[0].toFixed(2)}–${sel[1].toFixed(2)}초로 바꿨어요. "바꾼 내용으로 다시 만들기"를 누르면 적용돼요.`); } return; }
+  if (d.vrestore) { const w = cw(); return run(async () => { S = (await api(`/api/works/${w.id}/video-restore`, { videoId: d.vrestore })).state; ui.edlDraft = null; render(); toast(`${d.vrestore}로 되돌렸어요.`); }); }
+  if (d.sfxplay) { playSfx(d.sfxplay); return; }
+  if (d.sfxplaySel !== undefined) { const n = $('#sfxadd-name')?.value; if (n) playSfx(n); return; }
+  if (d.sfxdel !== undefined) { const w = cw(); draftOf(w).sfx.splice(Number(d.sfxdel), 1); render(); return; }
+  if (d.sfxlibdel) return run(async () => { S = (await api(`/api/sfx/${encodeURIComponent(d.sfxlibdel)}/delete`, {})).state; render(); toast('효과음을 지웠어요.'); });
+  if (d.fixnotedel !== undefined) { ui.fixEdit.splice(Number(d.fixnotedel), 1); render(); return; }
+  if (d.fixeditopen !== undefined) { const w = cw(); ui.fixEdit = JSON.parse(JSON.stringify(w.video.fixes[0].notes || [])); render(); return; }
+  if (d.fixeditcancel !== undefined) { ui.fixEdit = null; render(); return; }
   if (d.week !== undefined) { ui.week = d.week === '0' ? mondayOf(today()) : addDays(ui.week, Number(d.week)); render(); return; }
   if (d.add) { const [acc, date] = d.add.split('|'); ui.newWork = { type: acc === 'SHOP' ? 'html' : 'image', acc: acc === 'SHOP' ? 'SHOP:damtix.shop' : acc, date, prod: 'GTCP', title: '', memo: '', cap: acc !== 'SHOP' }; render(); $('#newwork')?.scrollIntoView({ block: 'start' }); return; }
   if (d.act === 'newopen') { ui.newWork = ui.newWork || { type: 'image', acc: 'GLOBAL', date: addDays(today(), 1), prod: 'GTCP', title: '', memo: '', cap: true }; render(); $('#newwork')?.scrollIntoView({ block: 'start' }); return; }
@@ -771,7 +871,11 @@ document.addEventListener('click', e => {
     if (d.vseek !== undefined) { if (vp) { vp.currentTime = Number(d.vseek); vp.play?.().catch(() => {}); } return; }
     if (d.vrange !== undefined) { const n = vNotesOf(w).map(x => ({ ...x })); const i = Number(d.vrange); const t = vp?.currentTime || 0; if (t > n[i].t) n[i].t2 = +t.toFixed(2); else toast('구간 끝은 시작보다 뒤여야 해요. 재생 위치를 옮긴 뒤 눌러 주세요.'); ui.vNotes = n; render(); saveVNotesSoon(w); return; }
     if (d.vdel !== undefined) { ui.vNotes = vNotesOf(w).filter((_, i) => i !== Number(d.vdel)); render(); saveVNotesSoon(w); return; }
-    if (d.vid === 'addnote') { const t = vp?.currentTime || 0; const txt = $('#vnote').value.trim(); if (!txt) { $('#vnote').focus(); return; } ui.vNotes = [...vNotesOf(w), { t: +t.toFixed(2), t2: null, text: txt }].sort((a, b) => a.t - b.t); render(); saveVNotesSoon(w); toast(`${fmtT(t)} 지점에 메모를 남겼어요.`); return; }
+    if (d.vid === 'addnote') { const t = vp?.currentTime || 0; const txt = $('#vnote').value.trim(); if (!txt) { $('#vnote').focus(); return; } const target = $('#vtarget')?.value || 'screen'; const sfx = target === 'sfx' ? ($('#vsfx')?.value || undefined) : undefined; ui.vNotes = [...vNotesOf(w), { t: +t.toFixed(2), t2: null, text: txt, target, sfx }].sort((a, b) => a.t - b.t); render(); saveVNotesSoon(w); toast(`${fmtT(t)} 지점에 메모를 남겼어요.`); return; }
+    if (d.vid === 'edlapply') return run(async () => { const r = await api(`/api/works/${w.id}/video-edit`, { edl: edlPatch(w), note: '화면에서 직접 고침' }); S = r.state; ui.edlDraft = null; ui.strip = null; render(); toast('바꾼 내용으로 영상을 다시 만들고 있어요. Claude 차례 없이 프로그램이 바로 만들어요.'); });
+    if (d.vid === 'edlreset') { ui.edlDraft = null; ui.strip = null; render(); return; }
+    if (d.vid === 'sfxadd') { const t = vp?.currentTime || 0; const name = $('#sfxadd-name')?.value; if (!name) return; draftOf(w).sfx.push({ id: `N${Date.now() % 100000}`, name, at: +t.toFixed(2), volume: 1, fresh: true }); render(); return; }
+    if (d.vid === 'fixsave') return run(async () => { const r = await api(`/api/works/${w.id}/video-fix-edit`, { note: $('#fixedit-note')?.value, notes: ui.fixEdit }); S = r.state; ui.fixEdit = null; render(); toast('보낸 수정 요청을 고쳤어요.'); });
     if (d.vid === 'cutimages') return run(async () => { const r = await api(`/api/works/${w.id}/video-cut-images`, {}); S = r.state; render(); toast(`컷 이미지 작업을 만들고 Claude에게 구도 시안을 맡겼어요.`); });
     if (d.vid?.startsWith('fixopen-')) { ui.vFixOpen = d.vid.slice(8); render(); return; }
     if (d.vid === 'fixcancel') { ui.vFixOpen = null; render(); return; }
@@ -814,6 +918,7 @@ document.addEventListener('input', e => {
   if (t.dataset.f && ui.edit?.key === 'brand.subtitle') { const draft = { ...ui.edit.draft }, k = JSON.stringify(draft); clearTimeout(ui.subPrevT); $('#subprev .subgrid')?.classList.add('loading'); ui.subPrevT = setTimeout(() => loadSubPrev(draft, k), 600); }
   if (t.id === 'ereason' && ui.edit) ui.edit.reason = t.value;
   if (t.dataset.pnote) ui.pNotes = { ...(ui.pNotes || {}), [t.dataset.pnote]: t.value };
+  if (t.dataset.fixnote !== undefined && ui.fixEdit) ui.fixEdit[Number(t.dataset.fixnote)].text = t.value;
   if (t.id === 'ck-text') ui.check.text = t.value;
 });
 document.addEventListener('change', e => { const t = e.target;
@@ -823,6 +928,15 @@ document.addEventListener('change', e => { const t = e.target;
   if (t.dataset.final) { t.checked ? ui.finalPick.add(t.dataset.final) : ui.finalPick.delete(t.dataset.final); render(); }
   if (t.dataset.upscale) { ui.upscale = t.dataset.upscale; }
   if (t.dataset.subcolor) { ui.subColor = t.dataset.subcolor; render(); }
+  if (t.id === 'vtarget') { ui.vTarget = t.value; render(); $('#vnote')?.focus(); }
+  if (t.dataset.sfxname !== undefined || t.dataset.sfxat !== undefined || t.dataset.sfxvol !== undefined) {
+    const w = S.works.find(x => x.id === dropWork()); const list = draftOf(w).sfx;
+    if (t.dataset.sfxname !== undefined) list[Number(t.dataset.sfxname)].name = t.value;
+    if (t.dataset.sfxat !== undefined) list[Number(t.dataset.sfxat)].at = Math.max(0, Math.min(Number(t.value) || 0, w.video.videos[0].duration - 0.05));
+    if (t.dataset.sfxvol !== undefined) list[Number(t.dataset.sfxvol)].volume = Math.max(0, Math.min(2, Number(t.value) || 0));
+    list.sort((a, b) => a.at - b.at); render();
+  }
+  if (t.dataset.sfxfile !== undefined && t.files.length) uploadSfx(t.files[0]);
   if (t.dataset.fixcut) { ui.fixCuts = ui.fixCuts || new Set(); t.checked ? ui.fixCuts.add(t.dataset.fixcut) : ui.fixCuts.delete(t.dataset.fixcut); }
   if (t.dataset.cutimg !== undefined) { const w = S.works.find(x => x.id === dropWork()); if (w) run(async () => { S = (await api(`/api/works/${w.id}/video-cut-image`, { cutId: t.dataset.cutimg, imageId: t.value })).state; render(); toast(t.value ? `${t.dataset.cutimg}에 ${t.value}를 넣었어요.` : `${t.dataset.cutimg}에서 이미지를 뺐어요.`); }); }
   if (t.dataset.version) { const w = S.works.find(x => x.id === dropWork()); const set = new Set(ui.versions || w.video.versions || [w.account]); t.checked ? set.add(t.dataset.version) : set.delete(t.dataset.version); set.add(w.account); ui.versions = [...set]; }
@@ -870,3 +984,38 @@ document.addEventListener('paste', e => {
 // 영상 재생 위치를 타임라인에 표시하고, 타임라인을 누르면 그 지점으로 이동
 document.addEventListener('timeupdate', e => { if (e.target.id !== 'vp') return; const h = $('#vhead'), tl = $('#vtl'); if (h && tl) h.style.left = `${(e.target.currentTime / Number(tl.dataset.dur)) * 100}%`; }, true);
 document.addEventListener('click', e => { const tl = e.target.closest?.('#vtl'); if (!tl) return; const r = tl.getBoundingClientRect(); const vp = $('#vp'); if (vp) vp.currentTime = (e.clientX - r.left) / r.width * Number(tl.dataset.dur); });
+
+// 프레임 띠에서 끌어서 구간 고르기, 타임라인의 ♪(효과음) 끌어서 옮기기
+let dragSel = null, dragSfx = null;
+document.addEventListener('pointerdown', e => {
+  const f = e.target.closest?.('.strip .sf');
+  if (f) { e.preventDefault(); const strip = f.parentElement; dragSel = { strip, a: Number(f.dataset.sf), b: Number(f.dataset.sf) }; paintSel(); return; }
+  const mk = e.target.closest?.('.sfxmk');
+  if (mk) { e.preventDefault(); e.stopPropagation(); dragSfx = { mk, id: mk.dataset.sfxdrag, tl: mk.closest('#vtl'), moved: false }; mk.setPointerCapture?.(e.pointerId); }
+});
+document.addEventListener('pointermove', e => {
+  if (dragSel) { const el = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('.sf'); if (el && el.parentElement === dragSel.strip) { dragSel.b = Number(el.dataset.sf); paintSel(); } }
+  if (dragSfx) { const r = dragSfx.tl.getBoundingClientRect(); const p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)); dragSfx.mk.style.left = `${p * 100}%`; dragSfx.p = p; dragSfx.moved = true; }
+});
+document.addEventListener('pointerup', () => {
+  if (dragSel) {
+    const st = dragSel.strip, step = Number(st.dataset.step), dur = Number(st.dataset.dur), lo = Math.min(dragSel.a, dragSel.b), hi = Math.max(dragSel.a, dragSel.b);
+    if (ui.strip) ui.strip.sel = [+(lo * step).toFixed(2), +Math.min(dur, (hi + 1) * step).toFixed(2)];
+    dragSel = null; render();
+  }
+  if (dragSfx) {
+    const d = dragSfx; dragSfx = null;
+    if (d.moved) { const w = S.works.find(x => x.id === dropWork()); const dur = w.video.videos[0].duration; const s = draftOf(w).sfx.find(x => x.id === d.id); if (s) { s.at = +Math.min(dur - 0.05, d.p * dur).toFixed(2); draftOf(w).sfx.sort((a, b) => a.at - b.at); ui.edlOpen = true; render(); toast(`${sfxLabel(s.name)}을 ${s.at.toFixed(2)}초로 옮겼어요. 적용하려면 "바꾼 내용으로 다시 만들기".`); } }
+  }
+});
+function paintSel() { const lo = Math.min(dragSel.a, dragSel.b), hi = Math.max(dragSel.a, dragSel.b); dragSel.strip.querySelectorAll('.sf').forEach(el => { const i = Number(el.dataset.sf); el.classList.toggle('on', i >= lo && i <= hi); }); }
+async function uploadSfx(file) {
+  const name = prompt('효과음 이름 (영문·숫자, 예: click2)', file.name.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-'));
+  if (!name) return;
+  const label = prompt('한국어 이름 (예: 딸깍)', name) || name;
+  await run(async () => {
+    const res = await fetch('/api/sfx/upload', { method: 'POST', headers: { 'x-filename': encodeURIComponent(file.name), 'x-name': encodeURIComponent(name), 'x-label': encodeURIComponent(label) }, body: file });
+    const r = await res.json(); if (!res.ok) throw new Error(r.error || '효과음을 넣지 못했어요.');
+    S = r.state; render(); toast(`"${r.sfx.label}" 효과음을 넣었어요. Claude는 ${r.sfx.name} 이름으로 써요.`);
+  });
+}
