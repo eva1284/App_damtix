@@ -2,6 +2,7 @@
 // 터미널 창을 켜 둘 필요가 없고, 꺼지면 다시 켜진다. Claude 앱을 껐다 켜도 영향을 받지 않는다.
 //   node scripts/autostart.js install   켜기
 //   node scripts/autostart.js uninstall 끄기
+//   node scripts/autostart.js restart   다시 켜기 (업데이트 뒤)
 //   node scripts/autostart.js status    상태 보기
 import fs from 'node:fs';
 import path from 'node:path';
@@ -53,6 +54,10 @@ if (cmd === 'install') {
     process.exit(1);
   }
   console.log(`\n자동 실행을 켰어요. 이제 Mac에 로그인하면 contents controller가 뒤에서 켜져요.\n브라우저에서 http://localhost:4321 을 열면 돼요.\n\n처음에 "node가 데스크탑 폴더에 접근하려고 합니다" 같은 창이 뜨면 [허용]을 눌러 주세요 (기준 이미지 폴더를 읽기 위해서예요).\n기록 파일: ${logPath}\n`);
+} else if (cmd === 'restart') {
+  if (!fs.existsSync(plistPath)) { console.log('자동 실행이 꺼져 있어요. start.command로 켜 주세요.'); process.exit(1); }
+  if (launchctl('kickstart', '-k', `${domain}/${LABEL}`) === null) { console.error('다시 켜지 못했어요. autostart.command를 다시 실행해 주세요.'); process.exit(1); }
+  console.log('contents controller를 다시 켰어요.');
 } else if (cmd === 'uninstall') {
   launchctl('bootout', domain, plistPath) ?? launchctl('unload', '-w', plistPath);
   if (fs.existsSync(plistPath)) fs.unlinkSync(plistPath);

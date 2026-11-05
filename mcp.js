@@ -3,16 +3,15 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import fs from 'node:fs';
-import path from 'node:path';
 import { ensureData, load, markClaudeSeen } from './lib/store.js';
+import { migrateConfig, productImages, folderMap, collectImages } from './lib/images.js';
 import { ACCOUNTS, DEFS, checkText, addProposal } from './lib/rules.js';
 import { listWorks, getWork, createWork, submitCaption, queue } from './lib/works.js';
 
 ensureData();
+migrateConfig();
 const server = new McpServer({ name: 'contents-controller', version: '0.1.0' });
 const account = z.enum(['GLOBAL', 'JP', 'EU']);
-const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.heic', '.avif']);
 
 const ok = data => ({ content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data, null, 2) }] });
 const err = e => ({ isError: true, content: [{ type: 'text', text: e.message || String(e) }] });
@@ -24,22 +23,10 @@ function tool(name, config, handler) {
 const splitWords = s => String(s || '').split(',').map(w => w.trim()).filter(Boolean);
 
 function referenceImages(code) {
-  const base = path.join(load('config').imageRoot, '01_제품');
-  if (!fs.existsSync(base)) return { folder: null, files: [], note: `기준 이미지 폴더가 없어요: ${base}` };
-  const dir = fs.readdirSync(base, { withFileTypes: true }).find(d => d.isDirectory() && (d.name === code || d.name.startsWith(`${code}_`)));
-  if (!dir) return { folder: null, files: [], note: `${base} 안에 ${code}로 시작하는 폴더가 없어요.` };
-  const folder = path.join(base, dir.name);
-  const files = [];
-  const walk = (abs, depth) => {
-    for (const e of fs.readdirSync(abs, { withFileTypes: true })) {
-      if (e.name.startsWith('.')) continue;
-      const p = path.join(abs, e.name);
-      if (e.isDirectory() && depth < 1) walk(p, depth + 1);
-      else if (e.isFile() && IMAGE_EXT.has(path.extname(e.name).toLowerCase())) files.push(p);
-    }
-  };
-  walk(folder, 0);
-  return { folder, files: files.sort() };
+  const r = productImages(code);
+  if (!r.rootExists) return { folder: null, files: [], note: `이미지 폴더가 없어요: ${r.root}` };
+  if (!r.folder) return { folder: null, files: [], note: `"${r.folderName}" 폴더를 ${r.root}에서 찾을 수 없어요. contents controller > 브랜드 기준 > 제품별에서 폴더를 다시 지정해 주세요.` };
+  return { folder: r.folder, count: r.count, truncated: r.truncated, groups: r.groups.map(g => ({ name: g.name, files: g.files.map(f => f.abs) })) };
 }
 
 tool('get_brand_guide', {
@@ -77,6 +64,19 @@ tool('get_product', {
   const p = load('products').find(x => x.code === String(code).toUpperCase());
   if (!p) throw new Error(`제품 코드 ${code}를 찾을 수 없어요. list_products로 코드를 확인하세요.`);
   return { ...p, version: `v${p.version}`, rules: p.rules.split('\n').filter(Boolean), referenceImages: referenceImages(p.code) };
+});
+
+tool('get_image_folders', {
+  title: '이미지 폴더 지도',
+  description: '사용자 Mac의 이미지정리 폴더 구조를 본다: 제품별 기준 이미지 폴더(01 다크스팟, 02 PDRN …)와 누끼, 단체컷, 실제 모델, AI 모델, 로고, 기타 폴더의 실제 경로. kind를 주면 그 폴더의 이미지 파일 경로 목록도 준다. 모델이 나오는 이미지를 만들 때는 realModels 또는 aiModels 폴더의 사진을 참조로 써서 같은 얼굴을 유지한다.',
+  inputSchema: { kind: z.enum(['cutouts', 'group', 'realModels', 'aiModels', 'logos', 'etc']).optional() }
+}, ({ kind }) => {
+  const map = folderMap();
+  if (!kind) return map;
+  const f = map.others.find(o => o.key === kind);
+  if (!f?.path) return `${f?.label || kind} 폴더("${f?.folderName}")를 찾을 수 없어요.`;
+  const r = collectImages(map.root, f.path);
+  return { ...f, count: r.count, truncated: r.truncated, groups: r.groups.map(g => ({ name: g.name, files: g.files.map(x => x.abs) })) };
 });
 
 tool('check_text', {

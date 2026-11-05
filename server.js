@@ -6,12 +6,13 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { APP_DIR, DATA_DIR, ensureData, load, save, claudeLastSeen } from './lib/store.js';
 import { DEFS, ACCOUNTS, applyChange, rollback, acceptProposal, rejectProposal, checkText } from './lib/rules.js';
+import { IMAGE_EXT, migrateConfig, productImages, folderMap, listTopFolders, setFolders } from './lib/images.js';
 import { TYPES as WORK_TYPES, STORES, CAPTION_STATUS, listWorks, createWork, updateWork, deleteWork, requestCaption, fixCaption, confirmCaption, reopenCaption, queue } from './lib/works.js';
 
 ensureData();
+migrateConfig();
 const PUBLIC_DIR = path.join(APP_DIR, 'public');
-const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.avif']);
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.avif': 'image/avif', '.heic': 'image/heic', '.json': 'application/json' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.avif': 'image/avif', '.heic': 'image/heic', '.tif': 'image/tiff', '.tiff': 'image/tiff', '.json': 'application/json' };
 
 const isLocal = req => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
 const codeHash = code => crypto.createHash('sha256').update(`cc:${code}`).digest('hex').slice(0, 32);
@@ -50,29 +51,6 @@ function sendFile(res, file) {
   });
 }
 
-// 제품 기준 이미지: 이미지정리/01_제품/<코드>로 시작하는 폴더 안의 이미지
-function productImages(code) {
-  const root = load('config').imageRoot;
-  const base = path.join(root, '01_제품');
-  const result = { root, base, folder: null, exists: fs.existsSync(base), groups: [] };
-  if (!result.exists) return result;
-  const dir = fs.readdirSync(base, { withFileTypes: true }).find(d => d.isDirectory() && (d.name === code || d.name.startsWith(`${code}_`)));
-  if (!dir) return result;
-  result.folder = path.join(base, dir.name);
-  const walk = (abs, groupName, depth) => {
-    const files = [];
-    for (const e of fs.readdirSync(abs, { withFileTypes: true })) {
-      if (e.name.startsWith('.')) continue;
-      const p = path.join(abs, e.name);
-      if (e.isDirectory() && depth < 1) walk(p, e.name, depth + 1);
-      else if (e.isFile() && IMAGE_EXT.has(path.extname(e.name).toLowerCase())) files.push({ name: e.name, rel: path.relative(root, p) });
-    }
-    if (files.length) result.groups.push({ name: groupName, files: files.sort((a, b) => a.name.localeCompare(b.name)) });
-  };
-  walk(result.folder, '기본', 0);
-  return result;
-}
-
 function state(req) {
   const config = load('config');
   const local = isLocal(req);
@@ -82,7 +60,7 @@ function state(req) {
     defs: DEFS, accounts: ACCOUNTS, types: WORK_TYPES, stores: STORES, captionStatus: CAPTION_STATUS,
     works: listWorks(), queue: queue(),
     info: {
-      local, imageRoot: config.imageRoot, imageRootExists: fs.existsSync(config.imageRoot),
+      local, imageRoot: config.imageRoot, imageRootExists: fs.existsSync(config.imageRoot), folders: folderMap(),
       claudeLastSeen: claudeLastSeen(), dataDir: local ? DATA_DIR : undefined,
       phone: local ? { urls: lanUrls(config.port), accessCode: config.accessCode } : undefined
     }
@@ -123,7 +101,11 @@ async function route(req, res) {
     return send(res, 200, { ...r, state: state(req) });
   }
   m = /^\/api\/products\/([A-Z0-9]+)\/images$/.exec(p);
-  if (m && req.method === 'GET') return send(res, 200, productImages(m[1]));
+  if (m && req.method === 'GET') {
+    const r = productImages(m[1]);
+    return send(res, 200, { ...r, folder: isLocal(req) ? r.folder : undefined, groups: r.groups.map(g => ({ name: g.name, files: g.files.map(({ abs, ...f }) => f) })) });
+  }
+  if (p === '/api/folders' && req.method === 'GET') return send(res, 200, { top: listTopFolders() });
   if (p === '/api/works' && req.method === 'POST') {
     const w = createWork(await readBody(req), who(req));
     return send(res, 200, { work: w, state: state(req) });
@@ -141,6 +123,7 @@ async function route(req, res) {
     const config = load('config');
     if (typeof b.imageRoot === 'string' && b.imageRoot.trim()) config.imageRoot = b.imageRoot.trim().replace(/^~(?=\/|$)/, os.homedir());
     save('config', config);
+    if (b.productFolders || b.otherFolders) setFolders(b);
     return send(res, 200, { state: state(req) });
   }
   if (p === '/file' && req.method === 'GET') {

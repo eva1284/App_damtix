@@ -86,8 +86,13 @@ function vHome() {
     </section>
     <section class="panel"><div class="panel-h"><h2>이미지 폴더</h2></div>
       <div class="status"><span class="dot ${i.imageRootExists ? 'ok' : 'warn'}"></span><div class="small" style="min-width:0">${i.imageRootExists ? '연결됨' : '폴더를 찾을 수 없어요'}<div class="mono">${esc(i.imageRoot)}</div></div></div>
+      ${i.imageRootExists ? `<div class="status"><span class="dot ${i.folders.products.every(x => x.path) ? 'ok' : 'warn'}"></span><div class="small" style="min-width:0">제품 폴더 ${i.folders.products.filter(x => x.path).length}/${i.folders.products.length}개 연결
+        <div style="margin-top:4px">${i.folders.products.map(x => `<span class="chip ${x.path ? 'acc' : 'st-crit'}" style="margin:2px 4px 2px 0" title="${esc(x.product)}">${x.code} · ${esc(x.folderName)}</span>`).join('')}</div></div></div>
+      <div class="status"><span class="dot ${i.folders.others.every(x => x.path) ? 'ok' : 'warn'}"></span><div class="small" style="min-width:0">그 밖의 폴더
+        <div style="margin-top:4px">${i.folders.others.map(x => `<span class="chip ${x.path ? 'acc' : 'st-crit'}" style="margin:2px 4px 2px 0">${esc(x.label)} · ${esc(x.folderName)}</span>`).join('')}</div></div></div>
+      ${i.folders.unassigned.length ? `<div class="status"><span class="dot"></span><div class="small muted" style="min-width:0">아직 쓰지 않는 폴더: ${i.folders.unassigned.map(esc).join(', ')}</div></div>` : ''}` : ''}
       <div class="addbar"><input type="text" id="imgroot" value="${esc(i.imageRoot)}" aria-label="이미지 폴더 경로"><button class="btn sm" data-act="setroot">바꾸기</button></div>
-      <p class="small muted" style="margin:8px 0 0">제품 기준 이미지는 이 폴더의 <code class="mono">01_제품/제품코드_이름/</code>에서 찾아요.</p>
+      <p class="small muted" style="margin:8px 0 0">제품별 폴더는 브랜드 기준 > 제품별 > 기준 이미지에서 바꿀 수 있어요.</p>
     </section>` : ''}
   </div>`;
 }
@@ -226,17 +231,22 @@ const bump = v => { const [a, b] = String(v).split('.').map(Number); return `${a
 function imagesPanel(p) {
   const im = ui.images[p.code];
   if (!im) { loadImages(p.code); return `<section class="panel"><div class="panel-h"><h2>기준 이미지</h2></div><p class="empty">불러오는 중…</p></section>`; }
-  const count = im.groups.reduce((n, g) => n + g.files.length, 0);
+  const local = S.info.local;
+  const top = ui.topFolders || [];
+  const picker = local ? `<div class="addbar" style="margin-top:0"><select class="btn" id="pf-${p.code}" aria-label="${p.code} 기준 이미지 폴더" style="flex:1;min-width:0">${[im.folderName, ...top.filter(n => n !== im.folderName)].filter(Boolean).map(n => `<option value="${esc(n)}" ${n === im.folderName ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select><button class="btn sm" data-setpf="${p.code}">이 폴더로 지정</button></div>` : '';
   let body;
-  if (!im.exists) body = `<div class="cautionbox">이미지 폴더에 <code class="mono">01_제품</code> 폴더가 없어요: ${esc(im.base)}</div>`;
-  else if (!im.folder) body = `<div class="cautionbox"><code class="mono">01_제품</code> 안에 <b>${p.code}</b>로 시작하는 폴더를 만들어 주세요. 예: <code class="mono">${p.code}_${esc(p.names.KR.replace(/\s/g, ''))}</code></div>`;
-  else if (!count) body = `<p class="empty">폴더는 있지만 이미지가 없어요: ${esc(im.folder)}</p>`;
-  else body = im.groups.map(g => `<h3 style="margin-top:12px">${esc(g.name)} <span class="small muted" style="font-weight:400">${g.files.length}장</span></h3><div class="imgs">${g.files.map(f => `<a href="/file?rel=${encodeURIComponent(f.rel)}" target="_blank" rel="noopener" title="${esc(f.name)}"><img src="/file?rel=${encodeURIComponent(f.rel)}" alt="${esc(f.name)}" loading="lazy"></a>`).join('')}</div>`).join('');
-  return `<section class="panel"><div class="panel-h"><h2>기준 이미지 <span class="small muted" style="font-weight:400">${count}장</span></h2><button class="btn sm" data-reimg="${p.code}">새로 고침</button></div>
-    <p class="small muted" style="margin:-8px 0 8px">이미지를 만들 때 Claude가 항상 이 사진들을 참조해요. 바꾸려면 폴더 안의 파일을 바꾸면 돼요.</p>${body}</section>`;
+  if (!im.rootExists) body = `<div class="cautionbox">이미지 폴더를 찾을 수 없어요: ${esc(im.root)}. 홈 화면에서 경로를 확인해 주세요.</div>`;
+  else if (!im.folder) body = `<div class="cautionbox">"${esc(im.folderName)}" 폴더를 찾을 수 없어요. 위에서 이 제품의 폴더를 골라 주세요.</div>`;
+  else if (!im.count) body = `<p class="empty">"${esc(im.folderName)}" 폴더에 이미지가 없어요.</p>`;
+  else body = im.groups.map(g => `<h3 style="margin-top:16px">${esc(g.name)} <span class="small muted" style="font-weight:400">${g.files.length}장</span></h3><div class="imgs">${g.files.map(f => `<a href="/file?rel=${encodeURIComponent(f.rel)}" target="_blank" rel="noopener" title="${esc(f.name)}"><img src="/file?rel=${encodeURIComponent(f.rel)}" alt="${esc(f.name)}" loading="lazy"></a>`).join('')}</div>`).join('') + (im.truncated ? '<p class="small muted">이미지가 많아서 처음 300장만 보여요.</p>' : '');
+  return `<section class="panel"><div class="panel-h"><h2>기준 이미지 <span class="small muted" style="font-weight:400">${im.count || 0}장 · ${esc(im.folderName || '폴더 없음')}</span></h2><button class="btn sm" data-reimg="${p.code}">새로 고침</button></div>
+    <p class="small muted" style="margin:-8px 0 12px">Claude가 이 제품 이미지를 만들 때 항상 이 폴더의 사진을 참조해요. 사진을 바꾸려면 폴더 안의 파일을 바꾸면 돼요.</p>${picker}${body}</section>`;
 }
 async function loadImages(code) {
-  try { ui.images[code] = await api(`/api/products/${code}/images`); } catch (e) { ui.images[code] = { exists: false, base: e.message, groups: [] }; }
+  try {
+    const [im, f] = await Promise.all([api(`/api/products/${code}/images`), ui.topFolders ? null : api('/api/folders')]);
+    ui.images[code] = im; if (f) ui.topFolders = f.top;
+  } catch (e) { ui.images[code] = { rootExists: false, root: e.message, groups: [], count: 0 }; }
   if (cur === 'brand' && ui.btab === 'sku' && ui.sku === code) render();
 }
 
@@ -365,7 +375,8 @@ document.addEventListener('click', e => {
   if (d.pno) return run(async () => { S = (await api(`/api/proposals/${d.pno}/reject`, {})).state; render(); toast('제안을 무시했어요. 기준은 그대로예요.'); });
   if (d.rollback) return run(async () => { const r = await api('/api/rollback', { historyId: d.rollback }); S = r.state; ui.images = {}; render(); toast(`${r.label}했어요.`); });
   if (d.reimg) { delete ui.images[d.reimg]; render(); return; }
-  if (d.act === 'setroot') return run(async () => { S = (await api('/api/config', { imageRoot: $('#imgroot').value })).state; ui.images = {}; render(); toast(S.info.imageRootExists ? '이미지 폴더를 바꿨어요.' : '저장했지만 그 경로에 폴더가 없어요.'); });
+  if (d.setpf) return run(async () => { const name = $(`#pf-${d.setpf}`).value; S = (await api('/api/config', { productFolders: { [d.setpf]: name } })).state; delete ui.images[d.setpf]; render(); toast(`${d.setpf} 기준 이미지 폴더를 "${name}"(으)로 지정했어요.`); });
+  if (d.act === 'setroot') return run(async () => { S = (await api('/api/config', { imageRoot: $('#imgroot').value })).state; ui.images = {}; ui.topFolders = null; render(); toast(S.info.imageRootExists ? '이미지 폴더를 바꿨어요.' : '저장했지만 그 경로에 폴더가 없어요.'); });
   if (d.act === 'check') return run(async () => { const c = ui.check; c.text = $('#ck-text').value; c.account = $('#ck-acc').value; c.product = $('#ck-prod').value; if (!c.text.trim()) { $('#ck-text').focus(); return; } c.result = await api('/api/check', { text: c.text, account: c.account, product: c.product || undefined }); render(); });
 });
 document.addEventListener('input', e => {
