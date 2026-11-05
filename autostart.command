@@ -8,8 +8,8 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 [ -d node_modules ] || npm install --omit=dev --no-audit --no-fund
 # start.command로 켜 둔 프로그램이 있으면 끄고 자동 실행으로 넘긴다
-pkill -f "node server.js" 2>/dev/null
-pkill -f "$(pwd)/server.js" 2>/dev/null
+PIDS=$(lsof -ti tcp:4321 -sTCP:LISTEN 2>/dev/null)
+[ -n "$PIDS" ] && kill $PIDS 2>/dev/null && sleep 1
 node scripts/autostart.js install && (sleep 2 && open "http://localhost:4321") &
 wait
 read -r -p "엔터를 누르면 창이 닫혀요." _
