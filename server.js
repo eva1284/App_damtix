@@ -14,6 +14,7 @@ import { VIDEO_STAGE, SUB_STATUS, requestStory, fixStory, setCutImage, approveSt
 import { listTemplates, saveTemplate, deleteTemplate, findBrowser } from './lib/motion.js';
 import { finalsConfig, setFinals, driveCandidates } from './lib/finalize.js';
 import { claudeQueue } from './lib/queue.js';
+import { recopyToDrive } from './lib/drive.js';
 import { applyHandover } from './lib/handover.js';
 import { listFonts, addFont } from './lib/fonts.js';
 import { stylePreview, subtitleStyle, lineLimit, COLOR_MODES, SAFE_BOTTOM } from './lib/subtitles.js';
@@ -194,6 +195,8 @@ async function route(req, res) {
     try { await streamToFile(req, tmp); const w = await uploadVideo(m[1], tmp, who(req)); return send(res, 200, { work: w, state: state(req) }); }
     finally { fs.rmSync(tmp, { force: true }); }
   }
+  m = /^\/api\/works\/([A-Za-z]+-\d+)\/drive-retry$/.exec(p);
+  if (m && req.method === 'POST') { const w = await recopyToDrive(m[1], who(req)); return send(res, 200, { work: w, state: state(req) }); }
   // 모션 그래픽 템플릿
   m = /^\/api\/works\/([A-Za-z]+-\d+)\/motion-template$/.exec(p);
   if (m && req.method === 'POST') {

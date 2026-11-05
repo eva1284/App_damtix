@@ -399,6 +399,14 @@ async function addUrl(url, work) {
 const workFile = (w, f) => `/work-file?id=${w.id}&f=${encodeURIComponent(f)}`;
 const fmtSize = b => b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`;
 function pinsOf(r) { return ui.pins[r.id] || r.pins || []; }
+// 최종 저장의 Google Drive 단계 (실패하면 다시 복사)
+function driveStep(w, f) {
+  const d = f.drive || { status: 'off' };
+  const paths = d.paths?.length ? d.paths : d.path ? [d.path] : [];
+  const text = d.status === 'copied' ? paths.map(esc).join('<br>') : d.status === 'failed' ? `<span style="color:var(--red)">복사하지 못했어요.</span> ${esc(d.error || '')}` : d.status === 'missing' ? 'Drive 폴더를 찾을 수 없어서 복사하지 못했어요. 홈 > 완성본 저장에서 확인해 주세요.' : 'Drive 복사가 꺼져 있어요 (홈 > 완성본 저장).';
+  const btn = ['failed', 'missing'].includes(d.status) || (d.status === 'off' && S.info.finals?.driveFolder) ? `<div style="margin-top:8px"><button class="btn sm" data-driveretry="${w.id}" ${ui.busy ? 'disabled' : ''}>Drive에 다시 복사</button></div>` : '';
+  return `<li class="${d.status === 'copied' ? 'ok' : ''}"><span class="pi">${d.status === 'copied' ? '✓' : d.status === 'failed' ? '!' : '–'}</span><div style="min-width:0"><b class="small">Google Drive</b><div class="small muted path">${text}</div>${btn}</div></li>`;
+}
 const imgCuts = im => (im.cuts?.length ? im.cuts : [{ id: 'C1', title: '', desc: '' }]);
 // 화면에서 고른 시안 (아직 저장 전) + 저장된 선택. 처음에는 컷마다 첫 시안.
 function draftPicks(im) {
@@ -470,7 +478,7 @@ function imagePanel(w) {
     body = `<ol class="pipe">
       <li class="ok"><span class="pi">✓</span><div style="min-width:0"><b class="small">용량 최적화</b><div class="small muted">${f.files.map(x => `${esc(x.name)} · ${fmtSize(x.before)} → ${fmtSize(x.after)} · ${x.width}×${x.height}`).join('<br>')}</div></div></li>
       <li class="ok"><span class="pi">✓</span><div style="min-width:0"><b class="small">내 Mac에 저장</b><div class="small muted path">${esc(f.folder)}</div>${f.caption ? '' : '<div class="small" style="color:var(--yellow)">캡션이 컨펌되기 전이라 캡션 파일은 넣지 않았어요.</div>'}</div></li>
-      <li class="${f.drive.status === 'copied' ? 'ok' : ''}"><span class="pi">${f.drive.status === 'copied' ? '✓' : '–'}</span><div style="min-width:0"><b class="small">Google Drive</b><div class="small muted path">${f.drive.status === 'copied' ? esc(f.drive.path) : f.drive.status === 'missing' ? 'Drive 폴더를 찾을 수 없어서 복사하지 못했어요.' : 'Drive 복사가 꺼져 있어요 (홈 > 완성본 저장).'}</div></div></li></ol>
+      ${driveStep(w, f)}</ol>
       <div class="imgs" style="margin-top:12px">${im.results.filter(r => f.picked.includes(r.id)).map(r => `<a href="${workFile(w, r.file)}" target="_blank" rel="noopener"><img src="${workFile(w, r.file)}" alt="${r.id}"></a>`).join('')}</div>
       <div class="row" style="margin-top:12px">${S.info.local ? `<button class="btn sm" data-open="mac">Mac 폴더 열기</button>${f.drive.status === 'copied' ? '<button class="btn sm" data-open="drive">Drive 폴더 열기</button>' : ''}` : ''}<span class="spacer"></span><button class="btn sm" data-img="again">새 버전 만들기</button></div>`;
   }
@@ -598,7 +606,7 @@ function videoPanel(w) {
     body = `<ol class="pipe">
       <li class="ok"><span class="pi">✓</span><div style="min-width:0"><b class="small">나라별 영상 · 용량 최적화</b><div class="small muted">${f.outputs.map(o => `${esc(o.file)} · ${fmtSize(o.before)} → ${fmtSize(o.after)} · ${o.width}×${o.height}${o.subColors ? ` · 자막 흰 ${o.subColors.white} · 검정 ${o.subColors.black}` : ''}`).join('<br>')}</div></div></li>
       <li class="ok"><span class="pi">✓</span><div style="min-width:0"><b class="small">내 Mac에 저장</b><div class="small muted path">${f.folders.map(esc).join('<br>')}</div></div></li>
-      <li class="${f.drive.status === 'copied' ? 'ok' : ''}"><span class="pi">${f.drive.status === 'copied' ? '✓' : '–'}</span><div style="min-width:0"><b class="small">Google Drive</b><div class="small muted path">${f.drive.status === 'copied' ? f.drive.paths.map(esc).join('<br>') : f.drive.status === 'missing' ? 'Drive 폴더를 찾을 수 없어서 복사하지 못했어요.' : 'Drive 복사가 꺼져 있어요 (홈 > 완성본 저장).'}</div></div></li></ol>
+      ${driveStep(w, f)}</ol>
       <div class="row" style="margin-top:12px">${S.info.local ? f.folders.map((d, i) => `<button class="btn sm" data-open="mac" data-index="${i}">${esc(d.split('/').slice(-2, -1)[0])} 폴더 열기</button>`).join('') : ''}<span class="spacer"></span><button class="btn sm" data-vid="again">새 버전 만들기</button></div>`;
   }
   return `<section class="panel"><div class="panel-h"><h2>영상 제작${v.method && v.stage !== 'none' ? ` <span class="small muted" style="font-weight:400">${v.method === 'claude' ? 'Claude가 편집' : 'CapCut에서 내가 편집'}</span>` : ''}</h2><span class="chip ${workState({ ...w, caption: { status: 'none' } }).c}">${esc(label)}</span></div>${body}</section>`;
@@ -737,6 +745,7 @@ document.addEventListener('click', e => {
       ui.imgFixOpen = false; ui.draftPick = null; ui.dPicks = null; ui.pNotes = null; ui.fixCuts = null; ui.pins = {}; if (d.img === 'final') ui.finalPick = new Set(); render(); toast(c[2]);
     });
   }
+  if (d.driveretry) return run(async () => { ui.busy = true; render(); toast('Google Drive에 복사하는 중…'); try { const r = await api(`/api/works/${d.driveretry}/drive-retry`, {}); S = r.state; const f = r.work.type === 'image' ? r.work.image.final : r.work.video.final; toast(f.drive.status === 'copied' ? 'Google Drive에 복사했어요.' : f.drive.status === 'failed' ? '아직 복사하지 못했어요. 잠시 뒤 다시 눌러 주세요.' : 'Drive 폴더를 확인해 주세요.'); } finally { ui.busy = false; render(); } });
   if (d.motionopen !== undefined) { ui.motionOpen = !ui.motionOpen; }
   if (d.tpl) {
     const w = S.works.find(x => x.id === dropWork());
