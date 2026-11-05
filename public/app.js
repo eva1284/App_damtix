@@ -50,7 +50,7 @@ function workState(w) {
   const cap = w.account === 'SHOP' ? 'none' : w.caption.status;
   if (cap === 'review' || ['draft_review', 'result_review'].includes(im) || ['story_review', 'edit_me', 'result_review'].includes(vs) || sub === 'review' || (vs === 'video_ok' && (sub === 'confirmed' || w.video?.subs?.off))) return { t: '내 차례', c: 'st-you' };
   if (['requested', 'fix'].includes(cap) || ['draft_requested', 'draft_fix', 'make', 'make_fix', 'upscale'].includes(im) || ['story_requested', 'story_fix', 'make', 'make_fix'].includes(vs) || ['requested', 'fix'].includes(sub)) return { t: 'Claude 차례', c: 'st-claude' };
-  if (im === 'finalizing' || vs === 'finalizing') return { t: '처리 중', c: 'st-claude' };
+  if (im === 'finalizing' || vs === 'finalizing' || vs === 'rendering') return { t: '처리 중', c: 'st-claude' };
   if (w.type === 'image' ? im === 'done' : w.type === 'video' ? vs === 'done' : cap === 'confirmed') return { t: '완료', c: 'st-done' };
   return { t: '기획', c: 'st-plan' };
 }
@@ -461,6 +461,20 @@ function cutRefs(w, i) {
   const list = S.refs.filter(r => r.links.some(l => l.work === w.id && l.part === part));
   return `<div class="row small" style="margin-top:4px">${list.map(r => `<span class="chip acc">${esc(r.source)} · ${esc(r.memo || r.title)}<button class="x" data-unref="${r.id}|${w.id}|${part}" aria-label="연결 해제">×</button></span>`).join('')}<button class="btn sm" data-refpick="${w.id}|${part}" style="min-height:32px">+ 레퍼런스</button></div>${refPicker(w.id, part)}`;
 }
+// 모션 그래픽 글자 (나라별) — 영상 컨펌 때 고른 나라 버전은 이 글자로 프로그램이 다시 만들어요
+function motionTexts(w) {
+  const m = w.video.motion;
+  if (!m) return '';
+  const accs = Object.keys(m.comp.texts);
+  const la = { GLOBAL: 'en', JP: 'ja', EU: 'fr' };
+  return `<details class="inci" style="margin-top:16px" ${ui.motionOpen ? 'open' : ''}><summary data-motionopen>영상 속 글자 · 나라별 (${m.comp.keys.length}개 × ${accs.join('·')})</summary>
+    <p class="small muted" style="margin:8px 0">나라별 버전은 같은 디자인에 이 글자만 바꿔서 프로그램이 만들어요. 고칠 글자가 있으면 수정 요청 메모에 적어 주세요.</p>
+    <div class="tbl"><table class="subs"><thead><tr><th>키</th>${accs.map(a => `<th>${a}</th>`).join('')}</tr></thead><tbody>${m.comp.keys.map(k => `<tr><td class="tc">${esc(k)}</td>${accs.map(a => `<td><div lang="${la[a]}">${esc(m.comp.texts[a]?.[k]?.text || '')}</div><div class="small muted">${esc(m.comp.texts[a]?.[k]?.back || '')}</div></td>`).join('')}</tr>`).join('')}</tbody></table></div>
+    ${accs.flatMap(a => (m.comp.checks?.[a]?.issues || []).map(i => `<div class="check"><span class="ic" style="background:var(--yellow-soft);color:var(--yellow)">!</span><span>${a} · ${esc(i.message)}</span></div>`)).join('')}
+    <div class="row" style="margin-top:12px">${ui.tplOpen ? `<input type="text" id="tpl-name" placeholder="템플릿 이름 (예: 행사 릴스 틀)" style="flex:1;min-width:0"><button class="btn sm" data-tpl="cancel">취소</button><button class="btn sm primary" data-tpl="save">저장</button>` : `<span class="small muted">비슷한 영상을 또 만들 거라면</span><span class="spacer"></span><button class="btn sm" data-tpl="open">이 디자인을 템플릿으로 저장</button>`}</div>
+  </details>`;
+}
+
 function videoPanel(w) {
   const v = w.video || { stage: 'none', videos: [], notes: [], subs: { status: 'none' }, versions: [w.account] };
   const label = S.videoStage[v.stage];
@@ -470,15 +484,19 @@ function videoPanel(w) {
   if (v.stage === 'none') body = `<p class="small" style="margin:0 0 12px">먼저 Claude가 컷 구성(스토리보드)을 보내요. 확인한 뒤에 편집을 시작해요.</p>
     <label class="small">스토리보드 방향 (선택)<textarea id="vid-note" placeholder="예: 15초, 첫 2초에 텍스처 클로즈업, 마지막에 로고"></textarea></label>
     <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn primary" data-vid="request">스토리보드 맡기기</button></div>`;
+  else if (v.stage === 'rendering') {
+    const j = v.job || {};
+    body = `<div class="status"><span class="dot warn"></span><div class="small">Claude가 보낸 모션 그래픽 코드를 영상으로 만드는 중… ${j.total ? `${Math.round((j.done || 0) / j.total * 100)}%` : ''}<div class="muted" style="margin-top:4px">${v.motion ? `${v.motion.comp.duration}초 · ${v.motion.comp.width}×${v.motion.comp.height}${v.motion.template ? ` · 템플릿 ${esc(v.motion.template)}` : ''} · ` : ''}보통 1~3분 걸려요. 이 화면을 닫아도 계속 진행돼요.</div></div></div>${S.info.browser ? '' : '<div class="warnbox" style="margin-top:12px">Mac에 Google Chrome이 없어서 영상을 만들 수 없어요. Chrome을 설치하면 이어서 만들어요.</div>'}`;
+  }
   else if (['story_requested', 'story_fix', 'make', 'make_fix'].includes(v.stage)) {
     const fix = v.fixes?.[0];
-    body = `<div class="status"><span class="dot"></span><div class="small">${esc(label)}.${v.stage.startsWith('make') ? ' Higgsfield 영상 생성은 Claude가 예상 크레딧을 먼저 알려 드려요.' : ''}${fix && v.stage.endsWith('fix') ? `<div class="muted" style="margin-top:4px">수정 요청: ${esc(fix.note || '')}${fix.notes?.length ? ` (타임라인 메모 ${fix.notes.length}개)` : ''}</div>` : ''}</div></div>${cmdBox()}
+    body = `${v.motion?.error ? `<div class="warnbox" style="margin:0 0 12px">모션 그래픽 영상을 만들지 못했어요. Claude가 고칠 차례예요: ${esc(v.motion.error)}</div>` : ''}`+`<div class="status"><span class="dot"></span><div class="small">${esc(label)}.${v.stage.startsWith('make') ? ' Higgsfield 영상 생성은 Claude가 예상 크레딧을 먼저 알려 드려요.' : ''}${fix && v.stage.endsWith('fix') ? `<div class="muted" style="margin-top:4px">수정 요청: ${esc(fix.note || '')}${fix.notes?.length ? ` (타임라인 메모 ${fix.notes.length}개)` : ''}</div>` : ''}</div></div>${cmdBox()}
       ${v.stage.startsWith('make') ? '<div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn sm" data-vmethod="capcut">CapCut에서 직접 편집으로 바꾸기</button></div>' : ''}`;
   } else if (v.stage === 'story_review') {
     const imgs = S.works.filter(x => x.type === 'image' && x.id !== w.id && (x.image?.results?.length || x.image?.final));
     body = `<p class="small muted" style="margin:0 0 12px">${v.story.cuts.length}컷 · ${fmtT(v.story.cuts[v.story.cuts.length - 1].end)}${v.story.note ? ` · Claude: ${esc(v.story.note)}` : ''}</p>
       <div class="cuts">${v.story.cuts.map((c, i) => `<div class="cut"><div class="cth">${c.sketch ? `<img src="${workFile(w, c.sketch)}" alt="${c.id} 스케치" style="width:100%;height:100%;object-fit:contain;background:#fff">` : `<div style="display:grid;place-items:center;height:100%;font-size:12px;color:var(--muted)">${c.id}</div>`}</div>
-        <div style="min-width:0;display:flex;flex-direction:column;gap:4px"><div class="row"><b class="small">${c.id}</b><span class="code">${fmtT(c.start)}–${fmtT(c.end)}</span>${c.camera ? `<span class="small muted">${esc(c.camera)}</span>` : ''}</div>
+        <div style="min-width:0;display:flex;flex-direction:column;gap:4px"><div class="row"><b class="small">${c.id}</b><span class="code">${fmtT(c.start)}–${fmtT(c.end)}</span>${c.kind === 'motion' ? '<span class="chip st-plan">모션 그래픽</span>' : ''}${c.camera ? `<span class="small muted">${esc(c.camera)}</span>` : ''}</div>
           <div class="small">${esc(c.desc)}</div>${c.text ? `<div class="small">${esc(c.text)}</div><div class="small muted">${esc(c.back)}</div>` : ''}
           <label class="small muted" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">이미지 작업으로 시작<select class="btn" data-cutimg="${c.id}" style="min-height:36px;flex:1;min-width:0"><option value="">없음</option>${imgs.map(x => `<option value="${x.id}" ${c.fromImage === x.id ? 'selected' : ''}>${x.id} · ${esc(x.title)}</option>`).join('')}</select></label>
           ${cutRefs(w, i)}</div></div>`).join('')}</div>
@@ -495,7 +513,7 @@ function videoPanel(w) {
     const cuts = v.story?.cuts || [];
     const markets = ['GLOBAL', 'JP', 'EU'].filter(a => p.markets[S.accounts[a].market]);
     const versions = ui.versions || v.versions || [w.account];
-    body = `${vid.note ? `<p class="small" style="margin:0 0 12px">${vid.source === 'claude' ? 'Claude' : '나'}: ${esc(vid.note)}</p>` : ''}
+    body = `${vid.note ? `<p class="small" style="margin:0 0 12px">${vid.source === 'upload' ? '나' : 'Claude'}: ${esc(vid.note)}</p>` : ''}
       <div class="grid g-main"><div>
         <video id="vp" src="${workFile(w, vid.file)}" controls playsinline preload="metadata" style="width:100%;max-height:560px;background:#000;border-radius:11px"></video>
         <div class="timeline" id="vtl" data-dur="${vid.duration}" role="slider" aria-label="타임라인" tabindex="0">
@@ -508,6 +526,7 @@ function videoPanel(w) {
         <h3>수정사항 <span class="small muted" style="font-weight:400">${notes.length}개</span></h3>
         <div class="notes" style="margin-top:8px">${notes.map((n, i) => `<div class="note" style="grid-template-columns:auto minmax(0,1fr) auto"><button class="btn sm" data-vseek="${n.t}" style="min-height:36px" aria-label="${fmtT(n.t)}로 이동">${fmtT(n.t)}${n.t2 ? `–${fmtT(n.t2)}` : ''}</button><input type="text" id="vn-${i}" data-vnote="${i}" value="${esc(n.text)}" placeholder="고칠 점"><span class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sm" data-vrange="${i}" title="지금 지점을 구간 끝으로" style="min-height:36px">끝</button><button class="btn sm" data-vdel="${i}" style="min-height:36px" aria-label="메모 지우기">×</button></span></div>`).join('') || '<p class="empty">재생하다가 고칠 곳에서 메모를 추가하세요.</p>'}</div>
       </div></div>
+      ${vid.source === 'motion' ? motionTexts(w) : ''}
       ${ui.vFixOpen === 'video' ? `<label class="small" style="display:block;margin-top:16px">전체 메모 (선택)<textarea id="vfix-note" placeholder="예: 전체 길이 2초 줄이기"></textarea></label><div class="row" style="margin-top:12px"><button class="btn" data-vid="fixcancel">취소</button><span class="spacer"></span><button class="btn primary" data-vid="fixvideo">수정 요청 보내기 (${v.method === 'claude' ? 'Claude가 고쳐요' : 'CapCut에서 내가 고쳐요'})</button></div>`
         : `<div class="panel" style="margin-top:16px;padding:16px;background:var(--fill);border:0"><h3>영상 컨펌 후 만들 버전</h3>
           <div class="row" style="margin-top:8px">${markets.map(a => `<label class="small" style="display:flex;gap:8px;align-items:center;min-height:44px;margin-right:12px"><input type="checkbox" data-version="${a}" ${versions.includes(a) ? 'checked' : ''} ${a === w.account ? 'disabled' : ''}> ${a} · ${esc(S.accounts[a].lang)}</label>`).join('')}</div>
@@ -674,6 +693,13 @@ document.addEventListener('click', e => {
       ui.imgFixOpen = false; ui.draftPick = null; ui.pins = {}; if (d.img === 'final') ui.finalPick = new Set(); render(); toast(c[2]);
     });
   }
+  if (d.motionopen !== undefined) { ui.motionOpen = !ui.motionOpen; }
+  if (d.tpl) {
+    const w = S.works.find(x => x.id === dropWork());
+    if (d.tpl === 'open') { ui.tplOpen = true; ui.motionOpen = true; render(); $('#tpl-name')?.focus(); return; }
+    if (d.tpl === 'cancel') { ui.tplOpen = false; render(); return; }
+    if (d.tpl === 'save') { const name = $('#tpl-name').value.trim(); if (!name) { $('#tpl-name').focus(); return; } return run(async () => { const r = await api(`/api/works/${w.id}/motion-template`, { name }); S = r.state; ui.tplOpen = false; render(); toast(`${r.template.id} "${r.template.name}" 템플릿으로 저장했어요. 다음 영상 기획 메모에 "${r.template.id} 템플릿으로"라고 적으면 Claude가 거기서 시작해요.`); }); }
+  }
   if (d.substill) { ui.subStill = { ...ui.subStill, [d.substill]: !ui.subStill?.[d.substill] }; render(); return; }
   if (d.vid || d.vapprove || d.vmethod || d.vseek !== undefined || d.vrange !== undefined || d.vdel !== undefined) {
     const w = cw(); if (!w) return;
@@ -745,7 +771,7 @@ function refresh() {
   api('/api/state').then(s => { const pick = x => JSON.stringify([x.brand, x.products, x.proposals, x.history[0]?.id, x.info.claudeLastSeen, x.works.map(w => w.updatedAt), x.queue.length, x.refs.map(r => r.status + r.links.length)]); const changed = pick(s) !== pick(S); S = s; if (changed && cur !== 'check') render(); }).catch(() => {});
 }
 setInterval(refresh, 10000);
-setInterval(() => { if (S?.works.some(w => w.video?.stage === 'finalizing' || w.image?.stage === 'finalizing')) refresh(); }, 3000);
+setInterval(() => { if (S?.works.some(w => ['finalizing', 'rendering'].includes(w.video?.stage) || w.image?.stage === 'finalizing')) refresh(); }, 3000);
 window.addEventListener('focus', refresh);
 
 api('/api/state').then(s => { S = s; render(); }).catch(e => { $('#view').innerHTML = `<p class="loading">${esc(e.message)}</p>`; });

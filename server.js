@@ -10,7 +10,8 @@ import { IMAGE_EXT, migrateConfig, productImages, folderMap, listTopFolders, set
 import { spawn } from 'node:child_process';
 import { listRefs, getRef, refPath, addFileRef, addUrlRef, updateRef, link as linkRef, unlink as unlinkRef, deleteRef, dropWorkLinks } from './lib/refs.js';
 import { IMAGE_STAGE, requestDrafts, fixDrafts, pickDraft, savePins, fixResults, finalConfirm } from './lib/imagework.js';
-import { VIDEO_STAGE, SUB_STATUS, requestStory, fixStory, setCutImage, approveStory, setMethod, uploadVideo, saveNotes, fixVideo, approveVideo, fixSubtitles, confirmSubtitles, finalConfirmVideo, subtitleStill } from './lib/videowork.js';
+import { VIDEO_STAGE, SUB_STATUS, requestStory, fixStory, setCutImage, approveStory, setMethod, uploadVideo, saveNotes, fixVideo, approveVideo, fixSubtitles, confirmSubtitles, finalConfirmVideo, subtitleStill, pumpRenders } from './lib/videowork.js';
+import { listTemplates, saveTemplate, deleteTemplate, findBrowser } from './lib/motion.js';
 import { finalsConfig, setFinals, driveCandidates } from './lib/finalize.js';
 import { claudeQueue } from './lib/queue.js';
 import { listFonts, addFont } from './lib/fonts.js';
@@ -102,11 +103,11 @@ function state(req) {
     history: load('history').map(({ snapshot, ...h }) => h),
     defs: DEFS, accounts: ACCOUNTS, types: WORK_TYPES, stores: STORES, captionStatus: CAPTION_STATUS,
     works: listWorks(), queue: claudeQueue(), refs: listRefs(), imageStage: IMAGE_STAGE, videoStage: VIDEO_STAGE, subStatus: SUB_STATUS,
-    fonts: listFonts(), subColors: COLOR_MODES, subLimits: Object.fromEntries(Object.keys(ACCOUNTS).map(a => [a, lineLimit(subtitleStyle(), a)])), safeBottom: SAFE_BOTTOM,
+    fonts: listFonts(), templates: listTemplates().map(({ html, clips, ...t }) => ({ ...t, keys: t.keys })), subColors: COLOR_MODES, subLimits: Object.fromEntries(Object.keys(ACCOUNTS).map(a => [a, lineLimit(subtitleStyle(), a)])), safeBottom: SAFE_BOTTOM,
     info: {
       local, imageRoot: config.imageRoot, imageRootExists: fs.existsSync(config.imageRoot), folders: folderMap(),
       finals: { ...finalsConfig(), driveExists: !!config.driveFolder && fs.existsSync(config.driveFolder), driveCandidates: local ? driveCandidates() : [] },
-      claudeLastSeen: claudeLastSeen(), dataDir: local ? DATA_DIR : undefined,
+      claudeLastSeen: claudeLastSeen(), browser: !!findBrowser(), dataDir: local ? DATA_DIR : undefined,
       phone: local ? { urls: lanUrls(config.port), accessCode: config.accessCode } : undefined
     }
   };
@@ -181,6 +182,17 @@ async function route(req, res) {
     try { await streamToFile(req, tmp); const w = await uploadVideo(m[1], tmp, who(req)); return send(res, 200, { work: w, state: state(req) }); }
     finally { fs.rmSync(tmp, { force: true }); }
   }
+  // 모션 그래픽 템플릿
+  m = /^\/api\/works\/([A-Za-z]+-\d+)\/motion-template$/.exec(p);
+  if (m && req.method === 'POST') {
+    const b = await readBody(req);
+    const w = listWorks().find(x => x.id === m[1].toUpperCase());
+    if (!w?.video?.motion) throw new Error('모션 그래픽이 있는 영상 작업만 템플릿으로 저장할 수 있어요.');
+    const t = saveTemplate({ name: b.name, note: b.note, comp: w.video.motion.comp, from: w.id });
+    return send(res, 200, { template: { id: t.id, name: t.name }, state: state(req) });
+  }
+  m = /^\/api\/templates\/(TPL-\d+)\/delete$/.exec(p);
+  if (m && req.method === 'POST') { deleteTemplate(m[1]); return send(res, 200, { state: state(req) }); }
   // 자막 디자인: 미리보기, 글꼴 추가
   if (p === '/api/subtitle-preview' && req.method === 'POST') {
     const b = await readBody(req);
@@ -274,3 +286,8 @@ server.listen(port, '0.0.0.0', () => {
   // 자동 실행(launchd)으로 켜졌으면 창이 없으니 다른 안내를 남긴다
   console.log(process.env.XPC_SERVICE_NAME === 'com.damtix.contents-controller' ? `\n  자동 실행 중이에요. Mac을 켜면 알아서 켜져요.\n` : `\n  이 창을 닫으면 프로그램이 꺼져요.\n`);
 });
+
+// Claude가 보낸 모션 그래픽 코드를 영상으로 만든다 (Claude 연결 창구는 따로 실행되니 여기서 몇 초마다 확인)
+const pump = () => { try { pumpRenders(); } catch (e) { console.error('모션 그래픽 확인 실패:', e.message); } };
+pump();
+setInterval(pump, 3000).unref();

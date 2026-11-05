@@ -9,7 +9,8 @@ import { ACCOUNTS, DEFS, checkText, addProposal } from './lib/rules.js';
 import { listWorks, getWork, createWork, submitCaption } from './lib/works.js';
 import { getRef, refPath, refsFor, submitAnalysis } from './lib/refs.js';
 import { submitDrafts, submitImages, submitUpscaled, imageForClaude, imageOf } from './lib/imagework.js';
-import { submitStory, submitVideo, submitSubtitles, videoForClaude, framesForClaude } from './lib/videowork.js';
+import { submitStory, submitVideo, submitSubtitles, videoForClaude, framesForClaude, submitMotion, previewMotion } from './lib/videowork.js';
+import { MOTION_GUIDE, listTemplates, getTemplate, closeBrowser } from './lib/motion.js';
 import { workDir } from './lib/files.js';
 import { finalsConfig } from './lib/finalize.js';
 import { claudeQueue } from './lib/queue.js';
@@ -141,7 +142,10 @@ tool('list_queue', {
     '',
     '[스토리보드 만들기/고치기] 기획·레퍼런스(part가 cut:n이면 그 컷용)를 보고 9:16 릴스 컷 구성을 submit_storyboard로 보낸다. 컷마다 시작·끝(초), 장면 설명, 카메라, 화면 자막 초안(그 계정 언어)과 한국어 뜻. 토큰을 아끼려고 SVG 스케치는 꼭 필요한 컷만 넣는다.',
     '',
-    '[영상 편집하기/고치기] video.story를 따른다. 컷에 fromImage(이미지 작업 번호)가 있으면 그 작업의 최종 이미지로 그 컷을 만든다(get_work). Higgsfield 영상 생성은 예상 크레딧을 먼저 알리고 확인을 받는다. 편집은 CapCut 연결이 있으면 그것으로 한다. 자막은 넣지 않는다(프로그램이 나라별로 입힌다). 완성 영상은 submit_video로 보낸다. 고치기는 latestFix.notes(초 단위 시간과 메모)를 반영하고, 필요한 장면만 view_video_frames로 확인한다.',
+    '[영상 편집하기/고치기] video.story를 따른다. 컷에 fromImage(이미지 작업 번호)가 있으면 그 작업의 최종 이미지로 그 컷을 만든다(get_work). Higgsfield 영상 생성은 예상 크레딧을 먼저 알리고 확인을 받는다. 자막(대사)은 넣지 않는다(프로그램이 나라별로 입힌다).',
+    '  · 글자 애니메이션·제목 카드·엔딩·레이아웃 틀이 있는 영상(스토리보드 kind=motion 컷)은 영상 파일을 직접 만들지 말고 submit_motion으로 코드(HTML)와 나라별 글자(motionAccounts 전부), 재료 영상(clips: Higgsfield 결과 주소, 올라온 영상 video:V1, 레퍼런스 등)을 보낸다. 처음 한 번 get_motion_guide를 읽는다. 영상 파일은 프로그램이 만들고 나라별 버전도 글자만 바꿔 프로그램이 만든다. 보내기 전에 preview_motion으로 2~3장면만 확인하면 좋다. 비슷한 영상은 list_motion_templates의 템플릿에서 시작한다(template).',
+    '  · 글자 애니메이션 없이 촬영본만 이어 붙이는 편집은 CapCut 연결로 하고 submit_video로 보낸다.',
+    '  · 고치기는 latestFix.notes(초 단위 시간과 메모)를 반영한다. 모션 그래픽이면 video.motion.html을 보고 html_edits로 바뀐 부분만 보낸다. video.motion.error가 있으면 그 오류부터 고친다. 필요한 장면만 view_video_frames로 확인한다.',
     '',
     '[자막 쓰기/고치기] languages의 모든 언어를 한 번에 submit_subtitles로 보낸다. 각 언어로 자연스럽게 쓰고, 줄마다 원문만 보고 옮긴 한국어 역번역(back)을 붙인다. 시간은 cuts와 duration에 맞춘다. 자막은 브랜드 자막 디자인으로 입혀지므로 한 줄이 maxCharsPerLine(계정별 글자 수)을 넘지 않게, 한 자막은 두 줄 이내로 쓴다. 영상을 다시 볼 필요는 없다.'
   ].join('\n'),
@@ -257,6 +261,47 @@ tool('submit_video', {
   description: '완성한 영상(자막 없이)을 보낸다. 내려받을 수 있는 주소(url) 또는 Mac의 파일 경로(path). mp4·mov·webm, 1GB 이하.',
   inputSchema: { work_id: z.string(), url: z.string().optional(), path: z.string().optional(), note: z.string().optional().describe('사용자에게 남길 한국어 한 줄') }
 }, async ({ work_id, url, path: p, note }) => { const w = await submitVideo(work_id, { url, path: p, note }); const v = w.video.videos[0]; return `${w.id} 영상을 보냈어요 (${v.duration.toFixed(1)}초, ${v.width}×${v.height}). 사용자가 타임라인으로 검수할 차례예요.`; });
+
+tool('get_motion_guide', {
+  title: '모션 그래픽 코드 약속 보기',
+  description: 'submit_motion으로 보낼 모션 그래픽 코드(HTML)의 약속(투명 배경, 애니메이션 시간, 나라별 글자, 재료 주소)을 읽는다. 모션 그래픽을 처음 만들 때 한 번 읽는다.',
+  inputSchema: {}
+}, () => MOTION_GUIDE);
+
+const motionInput = {
+  work_id: z.string(),
+  html: z.string().optional().describe('모션 그래픽 코드 전체 (처음 보낼 때)'),
+  html_edits: z.array(z.object({ find: z.string(), replace: z.string() })).optional().describe('고칠 때: 바뀐 부분만'),
+  texts: z.record(z.string(), z.record(z.string(), z.union([z.object({ text: z.string(), back: z.string() }), z.null()]))).optional().describe('계정별 {{키}} 글자: { JP: { title: { text, back } } }'),
+  clips: z.array(z.object({ src: z.string(), at: z.number().optional(), from: z.number().optional(), duration: z.number().optional(), fit: z.enum(['cover', 'contain']).optional(), volume: z.number().optional(), muted: z.boolean().optional() })).optional(),
+  music: z.object({ src: z.string(), volume: z.number().optional() }).nullable().optional(),
+  width: z.number().optional(), height: z.number().optional(), duration: z.number().optional().describe('초'), background: z.string().optional(),
+  template: z.string().optional().describe('TPL-001처럼 템플릿에서 시작'),
+  note: z.string().optional().describe('사용자에게 남길 한국어 한 줄')
+};
+
+tool('submit_motion', {
+  title: '모션 그래픽 보내기 (코드 + 나라별 글자)',
+  description: '글자 애니메이션이 있는 영상을 코드(HTML)와 나라별 글자, 재료 영상으로 보낸다. 영상 파일은 사용자 Mac의 프로그램이 만든다(1~3분). 약속은 get_motion_guide. 막아야 할 표현이 있거나 글자가 빠지면 저장되지 않는다.',
+  inputSchema: motionInput
+}, ({ work_id, ...rest }) => { const w = submitMotion(work_id, rest); const m = w.video.motion; return `${w.id} 모션 그래픽 코드를 보냈어요 (${m.comp.duration}초, ${m.comp.width}×${m.comp.height}, 글자 ${m.comp.keys.length}개 × ${Object.keys(m.comp.texts).join('·')}). 프로그램이 영상으로 만든 뒤 사용자가 검수해요. 만들다 실패하면 video.motion.error에 이유가 남아요.`; });
+
+tool('preview_motion', {
+  title: '모션 그래픽 장면 미리 보기',
+  description: '보내기 전에 코드가 원하는 대로 보이는지 몇 장면(최대 4장)만 그림으로 본다. 저장하지 않는다. 입력은 submit_motion과 같고 times(초)와 account를 고른다.',
+  inputSchema: { ...motionInput, times: z.array(z.number()).max(4).optional(), account: z.string().optional() }
+}, async ({ work_id, times, account, ...rest }) => {
+  try {
+    const r = await previewMotion(work_id, rest, times || [0], account);
+    return { __content: [{ type: 'text', text: `${work_id} ${r.account} 장면: ${r.frames.map(f => `${f.t}초`).join(', ')}` }, ...r.frames.map(f => ({ type: 'image', data: f.data, mimeType: 'image/jpeg' }))] };
+  } finally { await closeBrowser(); }
+});
+
+tool('list_motion_templates', {
+  title: '모션 그래픽 템플릿 목록',
+  description: '사용자가 저장해 둔 모션 그래픽 템플릿(행사 릴스 틀, 당첨자 발표 등). id를 주면 그 템플릿의 코드와 글자 키까지 본다. submit_motion의 template에 id를 넣으면 거기서 시작한다.',
+  inputSchema: { id: z.string().optional() }
+}, ({ id }) => id ? getTemplate(id) : (listTemplates().map(({ html, texts, clips, ...t }) => t).length ? listTemplates().map(({ html, texts, clips, ...t }) => t) : '저장된 템플릿이 없어요.'));
 
 tool('submit_subtitles', {
   title: '자막 보내기 (모든 언어 한 번에)',
