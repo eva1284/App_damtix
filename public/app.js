@@ -1,9 +1,9 @@
-// contents controller 화면 (1단계: 브랜드 기준·문구 검사 / 2단계: 캘린더·작업 맡기기·캡션 검수)
+// contents controller 화면 (1단계: 브랜드 기준·문구 검사 / 2단계: 캘린더·캡션 / 3단계: 레퍼런스·이미지 제작)
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 let S = null; // 서버에서 받은 상태
-const ui = { btab: 'brand', sku: 'GTCP', edit: null, images: {}, check: { text: '', account: 'GLOBAL', product: '', result: null }, week: null, newWork: null, workEdit: null, fixOpen: false, confirmDelete: false };
+const ui = { btab: 'brand', sku: 'GTCP', edit: null, images: {}, check: { text: '', account: 'GLOBAL', product: '', result: null }, week: null, newWork: null, workEdit: null, fixOpen: false, confirmDelete: false, refPick: null, draftPick: null, pins: {}, finalPick: new Set(), imgFixOpen: false, refDelete: null, busy: false };
 
 async function api(path, body) {
   const r = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -28,9 +28,9 @@ const ICON = {
   brand: '<path d="M12 3l8 4v5c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V7z"/>',
   check: '<path d="M4 12l5 5L20 6"/>'
 };
-const NAV = [['home', '홈'], ['calendar', '캘린더'], ['brand', '브랜드 기준'], ['check', '문구 검사'], ['refs', '레퍼런스', 1], ['image', '이미지', 1], ['video', '영상', 1], ['html', 'HTML', 1]];
-const myTurn = () => S.works.filter(w => w.caption.status === 'review');
-const badge = k => k === 'home' ? myTurn().length : k === 'brand' ? S.proposals.length : 0;
+const NAV = [['home', '홈'], ['calendar', '캘린더'], ['refs', '레퍼런스'], ['image', '이미지'], ['brand', '브랜드 기준'], ['check', '문구 검사'], ['video', '영상', 1], ['html', 'HTML', 1]];
+const myTurn = () => S.works.filter(w => workState(w).c === 'st-you');
+const badge = k => k === 'home' ? myTurn().length : k === 'brand' ? S.proposals.length : k === 'image' ? S.works.filter(w => w.type === 'image' && workState(w).c === 'st-you').length : k === 'refs' ? S.refs.filter(r => r.status === 'wait').length : 0;
 function renderNav(cur) {
   $('#nav').innerHTML = NAV.map(([k, t, soon]) => `<a href="#${k}" ${k === cur ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round">${ICON[k]}</svg><span>${t}</span>${badge(k) ? `<span class="count">${badge(k)}</span>` : soon ? '<span class="soonmark">준비 중</span>' : ''}</a>`).join('');
 }
@@ -46,8 +46,13 @@ const md = s => { const d = parseYmd(s); return `${d.getMonth() + 1}/${d.getDate
 const DOW = ['월', '화', '수', '목', '금', '토', '일'];
 const accLabel = w => w.account === 'SHOP' ? w.store : w.account;
 function workState(w) {
-  if (w.account === 'SHOP') return { t: '기획', c: 'st-plan' };
-  return { none: { t: '기획', c: 'st-plan' }, requested: { t: 'Claude 차례', c: 'st-claude' }, fix: { t: 'Claude 고치는 중', c: 'st-claude' }, review: { t: '캡션 검수', c: 'st-you' }, confirmed: { t: '캡션 컨펌', c: 'st-done' } }[w.caption.status];
+  const im = w.image?.stage || 'none';
+  const cap = w.account === 'SHOP' ? 'none' : w.caption.status;
+  if (cap === 'review' || ['draft_review', 'result_review'].includes(im)) return { t: '내 차례', c: 'st-you' };
+  if (['requested', 'fix'].includes(cap) || ['draft_requested', 'draft_fix', 'make', 'make_fix'].includes(im)) return { t: 'Claude 차례', c: 'st-claude' };
+  if (im === 'finalizing') return { t: '처리 중', c: 'st-claude' };
+  if (w.type === 'image' ? im === 'done' : cap === 'confirmed') return { t: '완료', c: 'st-done' };
+  return { t: '기획', c: 'st-plan' };
 }
 const stateChip = w => { const s = workState(w); return `<span class="chip ${s.c}">${s.t}</span>`; };
 const workLink = w => `#work-${w.id}`;
@@ -66,10 +71,10 @@ function vHome() {
   ${S.proposals.length ? `<a class="hint" href="#brand" data-btab="prop" style="text-decoration:none;color:var(--ink);display:flex;gap:8px;align-items:center"><span class="chip st-warn">승인 필요</span>브랜드 기준 업데이트 제안 ${S.proposals.length}건이 기다려요 →</a>` : ''}
   <div class="grid g-main">
     <section class="panel"><div class="panel-h"><h2>내 차례 <span class="small muted" style="font-weight:400">${mine.length}건</span></h2><a class="btn sm" href="#calendar">캘린더</a></div>
-      ${mine.length ? `<div class="tasks">${mine.map(workRow).join('')}</div>` : `<p class="empty">검수할 캡션이 없어요.${upcoming.length ? ` 이번 주 게시 예정 ${upcoming.length}건은 캘린더에서 볼 수 있어요.` : ' 캘린더에서 새 작업을 기획해 보세요.'}</p>`}
+      ${mine.length ? `<div class="tasks">${mine.map(workRow).join('')}</div>` : `<p class="empty">검수할 것이 없어요.${upcoming.length ? ` 이번 주 게시 예정 ${upcoming.length}건은 캘린더에서 볼 수 있어요.` : ' 캘린더에서 새 작업을 기획해 보세요.'}</p>`}
     </section>
     <section class="panel"><div class="panel-h"><h2>Claude 차례 <span class="small muted" style="font-weight:400">${S.queue.length}건</span></h2></div>
-      ${S.queue.length ? `<ul class="queue">${S.queue.map(q => `<li><span class="chip st-claude">${esc(q.task)}</span><a href="#work-${q.workId}" style="min-width:0;flex:1;color:var(--ink)">${esc(q.title)}</a><span class="code">${q.workId}</span></li>`).join('')}</ul><div style="margin-top:12px">${cmdBox()}</div><p class="small muted" style="margin:8px 0 0">여러 건을 모아 두었다가 한 번에 맡겨도 돼요. 결과는 이 화면에 자동으로 들어와요.</p>` : '<p class="empty">Claude에게 맡긴 일이 없어요.</p>'}
+      ${S.queue.length ? `<ul class="queue">${S.queue.map(q => `<li><span class="chip st-claude">${esc(q.task)}</span><a href="${q.workId ? `#work-${q.workId}` : '#refs'}" style="min-width:0;flex:1;color:var(--ink)">${esc(q.title)}</a><span class="code">${q.workId || q.refId}</span></li>`).join('')}</ul><div style="margin-top:12px">${cmdBox()}</div><p class="small muted" style="margin:8px 0 0">여러 건을 모아 두었다가 한 번에 맡겨도 돼요. 결과는 이 화면에 자동으로 들어와요.</p>` : '<p class="empty">Claude에게 맡긴 일이 없어요.</p>'}
     </section>
   </div>
   <h2 style="margin-top:8px">상태</h2>
@@ -93,6 +98,11 @@ function vHome() {
       ${i.folders.unassigned.length ? `<div class="status"><span class="dot"></span><div class="small muted" style="min-width:0">아직 쓰지 않는 폴더: ${i.folders.unassigned.map(esc).join(', ')}</div></div>` : ''}` : ''}
       <div class="addbar"><input type="text" id="imgroot" value="${esc(i.imageRoot)}" aria-label="이미지 폴더 경로"><button class="btn sm" data-act="setroot">바꾸기</button></div>
       <p class="small muted" style="margin:8px 0 0">제품별 폴더는 브랜드 기준 > 제품별 > 기준 이미지에서 바꿀 수 있어요.</p>
+    </section>
+    <section class="panel"><div class="panel-h"><h2>완성본 저장</h2></div>
+      <div class="status"><span class="dot ok"></span><div class="small" style="min-width:0">Mac: 이미지정리 안의 <b>${esc(i.finals.finalsFolder)}</b> 폴더<div class="small muted">계정 / 게시일_작업번호 폴더로 나눠 저장해요.</div></div></div>
+      <div class="status"><span class="dot ${i.finals.driveFolder ? (i.finals.driveExists ? 'ok' : 'warn') : 'warn'}"></span><div class="small" style="min-width:0">${i.finals.driveFolder ? (i.finals.driveExists ? 'Google Drive에도 복사해요' : 'Google Drive 폴더를 찾을 수 없어요') : 'Google Drive 복사가 꺼져 있어요'}${i.finals.driveFolder ? `<div class="mono">${esc(i.finals.driveFolder)}</div>` : ''}</div></div>
+      ${i.finals.driveCandidates.length ? `<div class="addbar"><select class="btn" id="drivesel" style="flex:1;min-width:0" aria-label="Google Drive 폴더">${i.finals.driveCandidates.map(d => `<option value="${esc(d)}" ${d === i.finals.driveFolder ? 'selected' : ''}>${esc(d.split('/').slice(-2).join(' / '))}</option>`).join('')}<option value="">Google Drive에 복사하지 않기</option></select><button class="btn sm" data-act="setdrive">저장</button></div>` : `<p class="small muted" style="margin:8px 0 0">Google Drive 데스크톱 앱을 설치하면 완성본이 Drive에도 자동으로 올라가요.</p>`}
     </section>` : ''}
   </div>`;
 }
@@ -183,11 +193,12 @@ function vWork(id) {
       <label for="we-memo">기획 메모<textarea id="we-memo">${esc(E.memo)}</textarea></label></div>
       <div class="row" style="margin-top:16px"><button class="btn" data-act="weclose">취소</button><span class="spacer"></span><button class="btn primary" data-act="wesave">저장</button></div>`
     : `<dl class="kv"><dt>게시일</dt><dd>${esc(w.date)} (${DOW[(parseYmd(w.date).getDay() + 6) % 7]})</dd><dt>계정</dt><dd>${esc(accLabel(w))}${w.account !== 'SHOP' ? ` · ${esc(S.accounts[w.account].handle)} · ${esc(S.accounts[w.account].lang)}` : ''}</dd><dt>제품</dt><dd>${esc(w.product)} · ${esc(p?.names.KR || '')}${w.account === 'JP' && p?.names.JP ? ` · ${esc(p.names.JP)}` : ''}</dd><dt>기획 메모</dt><dd>${esc(w.memo) || '<span class="muted">비어 있음</span>'}</dd></dl>`;
-  const make = { image: '구도 시안 → Higgsfield 생성 → 핀 메모 검수는 3단계에서 열려요.', video: '스토리보드 → 제작 → 타임라인 검수는 4단계에서 열려요.', html: '섹션 구성 → 제작 → PC·모바일 미리보기 검수는 5단계에서 열려요.' }[w.type];
+  const make = { image: '', video: '스토리보드 → 제작 → 타임라인 검수는 4단계에서 열려요.', html: '섹션 구성 → 제작 → PC·모바일 미리보기 검수는 5단계에서 열려요.' }[w.type];
   return `<div class="row"><a class="btn sm" href="#calendar">‹ 캘린더</a></div>` + head(esc(w.title), `${w.id} · ${S.types[w.type].label} · ${md(w.date)} 게시`) + `
   <section class="panel"><div class="panel-h"><h2>기획</h2>${E ? '<span class="chip st-warn">수정 중</span>' : '<button class="btn sm" data-act="weopen">수정</button>'}</div>${plan}</section>
+  ${refsPanel(w)}
+  ${w.type === 'image' ? imagePanel(w) : `<section class="panel"><div class="panel-h"><h2>${S.types[w.type].label} 제작</h2><span class="chip st-plan">준비 중</span></div><p class="small muted" style="margin:0">${make}</p></section>`}
   ${captionPanel(w)}
-  <section class="panel"><div class="panel-h"><h2>${S.types[w.type].label} 제작</h2><span class="chip st-plan">준비 중</span></div><p class="small muted" style="margin:0">${make}</p></section>
   <section class="panel"><div class="panel-h"><h2>기록</h2></div>${w.log.slice(0, 12).map(l => `<div class="check" style="min-height:36px"><span class="small muted" style="width:120px;flex:none">${day(l.at)}</span><span class="small">${esc(l.what)}</span><span class="spacer"></span><span class="small muted">${esc(l.by)}</span></div>`).join('')}</section>
   <div class="row">${ui.confirmDelete ? `<span class="small" style="color:var(--red)">${w.id}를 지울까요? 되돌릴 수 없어요.</span><button class="btn" data-act="delno">취소</button><button class="btn" data-act="delyes" style="border-color:var(--red);color:var(--red)">지우기</button>` : '<button class="btn sm" data-act="delask">작업 지우기</button>'}</div>`;
 }
@@ -285,6 +296,122 @@ function vBrand() {
   ${body}`;
 }
 
+/* ---------- 레퍼런스 ---------- */
+const partLabel = (workId, part) => { if (!part) return '전체'; const [k, n] = part.split(':'); return k === 'cut' ? `컷 ${Number(n) + 1}` : k === 'sec' ? `섹션 ${Number(n) + 1}` : part; };
+function refThumb(r) {
+  if (r.kind === 'image' && r.file) return `<img src="/ref-file?id=${r.id}" alt="${esc(r.title)}" loading="lazy">`;
+  if (r.kind === 'video' && r.file) return `<video src="/ref-file?id=${r.id}#t=0.5" muted preload="metadata" aria-label="${esc(r.title)}"></video>`;
+  return `<div style="display:grid;place-items:center;height:100%;font-size:12px;color:var(--muted)">${r.kind === 'video' ? '▶ 영상 링크' : '링크'}</div>`;
+}
+const dropZone = (work, big) => `<div class="drop ${big ? '' : 'mini'}" data-drop="${work || ''}" tabindex="0" aria-label="레퍼런스 넣기">
+    <div class="${big ? 'big' : 'small'}">이미지·영상을 끌어다 놓거나 <b>⌘V</b>로 붙여넣기</div>
+    <div class="addbar"><input type="text" id="refurl-${work || 'lib'}" data-urlfor="${work || ''}" placeholder="인스타그램·틱톡·유튜브·핀터레스트 주소" aria-label="레퍼런스 주소"><button class="btn sm primary" data-refurl="${work || ''}">주소 추가</button><label class="btn sm" for="reffile-${work || 'lib'}">파일 고르기</label><input type="file" id="reffile-${work || 'lib'}" data-filefor="${work || ''}" accept="image/*,video/*" multiple hidden>${work ? `<button class="btn sm" data-refpick="${work}|">보관함에서 고르기</button>` : ''}</div>
+  </div>`;
+function refPicker(work, part) {
+  if (ui.refPick !== `${work}|${part}`) return '';
+  const cands = S.refs.filter(r => !r.links.some(l => l.work === work && l.part === part));
+  return `<div class="pickbox">${cands.map(r => `<button class="item" data-refadd="${r.id}|${work}|${part}"><span class="th" style="width:56px;height:42px">${refThumb(r)}</span><span style="min-width:0"><span class="it">${esc(r.title)}</span><span class="m"><span class="chip acc">${esc(r.source)}</span>${r.memo ? `<span class="small muted">${esc(r.memo)}</span>` : ''}</span></span></button>`).join('') || '<p class="empty">보관함에 더 고를 레퍼런스가 없어요.</p>'}</div>`;
+}
+function refsPanel(w) {
+  const list = S.refs.filter(r => r.links.some(l => l.work === w.id));
+  return `<section class="panel"><div class="panel-h"><h2>레퍼런스 <span class="small muted" style="font-weight:400">${list.length}개</span></h2><span class="small muted">여기에 넣으면 보관함에도 저장되고 이 작업에 연결돼요</span></div>
+    ${dropZone(w.id)}${refPicker(w.id, '')}
+    ${list.length ? `<div class="rrefs">${list.map(r => `<div class="rref"><span class="rth">${refThumb(r)}</span><div style="min-width:0"><div class="small" style="font-weight:600;overflow-wrap:anywhere">${esc(r.title)}</div>
+      <div class="m"><span class="chip acc">${esc(r.source)}</span>${r.links.filter(l => l.work === w.id).map(l => `<span class="chip st-plan">${partLabel(w.id, l.part)}</span>`).join('')}${r.status === 'done' ? '<span class="chip st-done">분석됨</span>' : '<span class="chip st-claude">분석 대기</span>'}</div>
+      <input type="text" id="rm-${w.id}-${r.id}" data-refmemo="${r.id}" value="${esc(r.memo)}" placeholder="가져올 점 (예: 색감만, 구도만)" style="width:100%;margin-top:8px">
+      ${r.analysis ? `<details class="inci"><summary>Claude 분석</summary><p style="font-size:14px;color:var(--ink)">${esc(r.analysis)}</p></details>` : ''}</div>
+      <button class="btn sm" data-unref="${r.id}|${w.id}" aria-label="연결 해제">해제</button></div>`).join('')}</div>` : ''}
+  </section>`;
+}
+function vRefs() {
+  const openWorks = S.works.filter(w => workState(w).c !== 'st-done');
+  return head('레퍼런스', '인터넷에서 찾은 이미지·영상·링크를 모아 두는 곳이에요. Claude가 직접 보고 분석해서 시안에 반영해요.') + `
+  ${dropZone('', true)}
+  <p class="hint">인스타그램·틱톡 영상은 주소만으로는 Claude가 내용을 못 볼 때가 많아요. 화면 녹화(⌘+Shift+5)나 캡처(⌘+Shift+4)를 같이 넣어 주세요.</p>
+  <div class="row"><span class="small muted">${S.refs.length}개 · 분석 대기 ${S.refs.filter(r => r.status === 'wait').length}개</span></div>
+  <div class="refs">${S.refs.map(r => `<article class="ref">
+    <div class="rt">${refThumb(r)}<span class="chip acc src">${esc(r.source)}${r.kind === 'video' ? ' · 영상' : ''}</span></div>
+    <div class="rb"><div class="rtitle">${esc(r.title)} <span class="code">${r.id}</span></div>${r.url ? `<a class="url" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.url)}</a>` : ''}
+      ${r.tags.length ? `<div class="tags">${r.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
+      ${r.status === 'done' ? `<div class="ana"><b>Claude 분석</b>${esc(r.analysis)}</div>` : `<div class="ana"><b>분석 대기</b>Claude 앱에서 "contents controller 대기 작업 처리해줘"라고 하면 분석해요.</div>`}
+      <label class="small">가져올 점<input type="text" id="lm-${r.id}" data-refmemo="${r.id}" value="${esc(r.memo)}" placeholder="예: 색감만, 컷 길이만" style="width:100%"></label>
+      <div><div class="small muted" style="margin-bottom:4px">쓰인 곳</div><div class="row">${r.links.length ? r.links.map(l => `<span class="chip acc"><a href="#work-${l.work}" style="color:inherit">${l.work}</a> · ${partLabel(l.work, l.part)}<button class="x" data-unref="${r.id}|${l.work}|${l.part}" aria-label="연결 해제">×</button></span>`).join('') : '<span class="small muted">아직 없음</span>'}</div></div>
+      <select class="btn" id="rl-${r.id}" data-reflink="${r.id}" aria-label="연결할 작업">${['<option value="">+ 작업에 연결</option>', ...openWorks.filter(w => !r.links.some(l => l.work === w.id)).map(w => `<option value="${w.id}">${w.id} · ${esc(w.title)}</option>`)].join('')}</select>
+      <div class="row"><span class="spacer"></span>${ui.refDelete === r.id ? `<span class="small" style="color:var(--red)">지울까요?</span><button class="btn sm" data-act="refdelno">취소</button><button class="btn sm" data-refdel="${r.id}" style="color:var(--red)">지우기</button>` : `<button class="btn sm" data-act="refdelask" data-id="${r.id}">삭제</button>`}</div>
+    </div></article>`).join('') || '<p class="empty">아직 레퍼런스가 없어요. 위에 끌어다 놓거나 붙여넣어 보세요.</p>'}</div>`;
+}
+async function uploadFiles(files, work) {
+  if (!files.length) return;
+  ui.busy = true; toast(`${files.length}개 올리는 중…`);
+  try {
+    for (const f of files) {
+      const r = await fetch('/api/refs/upload', { method: 'POST', headers: { 'x-filename': encodeURIComponent(f.name || 'clipboard.png'), 'x-work': work || '', 'content-type': f.type || 'application/octet-stream' }, body: f });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || '올리지 못했어요.');
+      S = j.state;
+    }
+    render(); toast(work ? `레퍼런스를 보관함에 저장하고 ${work}에 연결했어요.` : '레퍼런스를 추가했어요. Claude 분석 대기에 올렸어요.');
+  } catch (e) { toast(e.message); } finally { ui.busy = false; }
+}
+async function addUrl(url, work) {
+  if (!/^https?:\/\//i.test(String(url || '').trim())) { toast('http로 시작하는 주소를 넣어 주세요.'); return; }
+  try { S = (await api('/api/refs/url', { url: url.trim(), work: work || undefined })).state; render(); toast(work ? `${work}에 레퍼런스를 연결했어요.` : '레퍼런스를 추가했어요.'); } catch (e) { toast(e.message); }
+}
+
+/* ---------- 이미지 제작 ---------- */
+const workFile = (w, f) => `/work-file?id=${w.id}&f=${encodeURIComponent(f)}`;
+const fmtSize = b => b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`;
+function pinsOf(r) { return ui.pins[r.id] || r.pins || []; }
+function imagePanel(w) {
+  const im = w.image || { stage: 'none', drafts: [], results: [] };
+  const label = S.imageStage[im.stage];
+  let body = '';
+  if (im.stage === 'none') body = `<p class="small" style="margin:0 0 12px">먼저 Claude가 컴퓨터로 그린 구도 시안을 보내요. 크레딧이 들지 않아요. 고른 구도로만 실제 이미지를 만들어요.</p>
+    <label class="small">시안 방향 (선택)<textarea id="img-note" placeholder="예: 제품을 크게, 아침 햇살, 손이 나오는 컷"></textarea></label>
+    <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn primary" data-img="request">구도 시안 맡기기</button></div>`;
+  else if (['draft_requested', 'draft_fix', 'make', 'make_fix'].includes(im.stage)) {
+    const fix = im.fixes?.[0];
+    body = `<div class="status"><span class="dot"></span><div class="small">${esc(label)}.${im.stage.startsWith('make') ? ' Higgsfield로 만들기 전에 Claude가 예상 크레딧을 먼저 알려 드려요.' : ''}${fix && im.stage.endsWith('fix') ? `<div class="muted" style="margin-top:4px">수정 요청: ${esc(fix.note || '')}${fix.pins?.length ? ` (핀 ${fix.pins.reduce((a, x) => a + x.pins.length, 0)}개)` : ''}</div>` : ''}</div></div>${cmdBox()}`;
+  } else if (im.stage === 'draft_review') {
+    const pick = ui.draftPick || im.drafts[0]?.id;
+    body = `<p class="small muted" style="margin:0 0 12px">하나를 고르고, 생성할 때 바랄 점을 적어요. 마음에 드는 게 없으면 수정 요청을 보내요.</p>
+      <div class="drafts">${im.drafts.map(d => `<button class="draft" data-draft="${d.id}" aria-pressed="${pick === d.id}"><div class="dn"><h3>${esc(d.title)}</h3>${pick === d.id ? '<span class="chip st-done">선택</span>' : ''}</div><img src="${workFile(w, d.file)}" alt="${esc(d.title)}" style="width:100%;border-radius:8px;background:#fff"><span class="small muted">${esc(d.note)}</span></button>`).join('')}</div>
+      <label class="small" style="display:block;margin-top:16px">메모 (생성할 때 Claude가 반영)<textarea id="pick-note" placeholder="예: 빛은 더 부드럽게, 배경은 연한 회색"></textarea></label>
+      ${ui.imgFixOpen ? `<label class="small" style="display:block;margin-top:12px">시안을 어떻게 고칠까요?<textarea id="draftfix-note" placeholder="예: 제품을 더 크게, 문구 자리를 위로"></textarea></label><div class="row" style="margin-top:12px"><button class="btn" data-img="fixcancel">취소</button><span class="spacer"></span><button class="btn primary" data-img="fixdrafts">시안 수정 요청</button></div>`
+        : `<div class="row" style="margin-top:12px"><button class="btn" data-img="fixopen">시안 수정 요청</button><span class="spacer"></span><button class="btn primary" data-img="pick">이 시안으로 이미지 만들기 맡기기</button></div>`}`;
+  } else if (im.stage === 'result_review' || im.stage === 'finalizing') {
+    body = `${im.note ? `<p class="small" style="margin:0 0 12px">Claude: ${esc(im.note)}</p>` : ''}${im.error ? `<div class="warnbox" style="margin:0 0 12px">${esc(im.error)}</div>` : ''}
+      <p class="small muted" style="margin:0 0 12px">이미지를 누르면 그 자리에 핀이 생겨요. 고칠 점을 핀마다 적고, 최종으로 쓸 이미지는 체크해요.</p>
+      <div class="grid g-2">${im.results.map(r => { const pins = pinsOf(r); return `<div><div class="board" data-board="${r.id}"><img src="${workFile(w, r.file)}" alt="${r.id}" style="display:block;width:100%">${pins.map((p, i) => `<span class="pin" style="left:${p.x}%;top:${p.y}%">${i + 1}</span>`).join('')}</div>
+        <label class="small" style="display:flex;gap:8px;align-items:center;min-height:44px"><input type="checkbox" data-final="${r.id}" ${ui.finalPick.has(r.id) ? 'checked' : ''}> ${r.id} 최종으로 쓰기</label>
+        <div class="notes">${pins.map((p, i) => `<div class="note"><span class="n">${i + 1}</span><input type="text" id="pin-${r.id}-${i}" data-pin="${r.id}" data-i="${i}" value="${esc(p.note)}" placeholder="고칠 점"><button class="btn sm" data-pindel="${r.id}" data-i="${i}" aria-label="${i + 1}번 핀 지우기">지우기</button></div>`).join('')}</div></div>`; }).join('')}</div>
+      <label class="small" style="display:block;margin-top:16px">전체 메모 (선택)<textarea id="imgfix-note" placeholder="예: 전체적으로 조금 더 밝게"></textarea></label>
+      <div class="row" style="margin-top:12px"><button class="btn" data-img="fixresults" ${im.stage === 'finalizing' ? 'disabled' : ''}>수정 요청 보내기</button><span class="spacer"></span><button class="btn primary" data-img="final" ${im.stage === 'finalizing' || ui.busy ? 'disabled' : ''}>${im.stage === 'finalizing' ? '처리 중…' : '최종 컨펌'}</button></div>
+      <p class="small muted" style="margin:8px 0 0">최종 컨펌하면 용량 최적화(JPG · 가로 1080px) → Mac 폴더 저장 → Google Drive 복사가 자동으로 진행돼요.</p>`;
+  } else if (im.stage === 'done') {
+    const f = im.final;
+    body = `<ol class="pipe">
+      <li class="ok"><span class="pi">✓</span><div style="min-width:0"><b class="small">용량 최적화</b><div class="small muted">${f.files.map(x => `${esc(x.name)} · ${fmtSize(x.before)} → ${fmtSize(x.after)} · ${x.width}×${x.height}`).join('<br>')}</div></div></li>
+      <li class="ok"><span class="pi">✓</span><div style="min-width:0"><b class="small">내 Mac에 저장</b><div class="small muted path">${esc(f.folder)}</div>${f.caption ? '' : '<div class="small" style="color:var(--yellow)">캡션이 컨펌되기 전이라 캡션 파일은 넣지 않았어요.</div>'}</div></li>
+      <li class="${f.drive.status === 'copied' ? 'ok' : ''}"><span class="pi">${f.drive.status === 'copied' ? '✓' : '–'}</span><div style="min-width:0"><b class="small">Google Drive</b><div class="small muted path">${f.drive.status === 'copied' ? esc(f.drive.path) : f.drive.status === 'missing' ? 'Drive 폴더를 찾을 수 없어서 복사하지 못했어요.' : 'Drive 복사가 꺼져 있어요 (홈 > 완성본 저장).'}</div></div></li></ol>
+      <div class="imgs" style="margin-top:12px">${im.results.filter(r => f.picked.includes(r.id)).map(r => `<a href="${workFile(w, r.file)}" target="_blank" rel="noopener"><img src="${workFile(w, r.file)}" alt="${r.id}"></a>`).join('')}</div>
+      <div class="row" style="margin-top:12px">${S.info.local ? `<button class="btn sm" data-open="mac">Mac 폴더 열기</button>${f.drive.status === 'copied' ? '<button class="btn sm" data-open="drive">Drive 폴더 열기</button>' : ''}` : ''}<span class="spacer"></span><button class="btn sm" data-img="again">새 버전 만들기</button></div>`;
+  }
+  return `<section class="panel"><div class="panel-h"><h2>이미지 제작</h2><span class="chip ${workState({ ...w, caption: { status: 'none' } }).c}">${esc(label)}</span></div>${body}</section>`;
+}
+function vImage() {
+  const ws = S.works.filter(w => w.type === 'image');
+  const groups = [['내 차례', w => workState(w).c === 'st-you'], ['Claude 차례', w => workState(w).c === 'st-claude'], ['기획', w => workState(w).c === 'st-plan'], ['완료', w => workState(w).c === 'st-done']];
+  return head('이미지', '구도 시안 → 생성 → 핀 메모 검수 → 최종 컨펌 순서로 진행해요. 새 이미지 작업은 캘린더에서 만들어요.') + `
+  <div class="row"><span class="spacer"></span><a class="btn primary" href="#calendar">캘린더에서 새 작업</a></div>
+  ${groups.map(([t, f]) => { const list = ws.filter(f); return list.length ? `<section class="panel"><div class="panel-h"><h2>${t} <span class="small muted" style="font-weight:400">${list.length}건</span></h2></div><div class="tasks">${list.map(workRow).join('')}</div></section>` : ''; }).join('') || '<p class="empty">아직 이미지 작업이 없어요.</p>'}`;
+}
+let pinTimer = {};
+function savePinsSoon(w, resultId) {
+  clearTimeout(pinTimer[resultId]);
+  pinTimer[resultId] = setTimeout(() => api(`/api/works/${w.id}/image-pins`, { resultId, pins: ui.pins[resultId] }).then(r => { S = r.state; }).catch(e => toast(e.message)), 600);
+}
+
 /* ---------- 문구 검사 ---------- */
 function vCheck() {
   const c = ui.check, r = c.result;
@@ -304,8 +431,6 @@ function vCheck() {
 
 /* ---------- 준비 중 화면 ---------- */
 const SOON = {
-  refs: ['레퍼런스', '3단계', ['인터넷 이미지·영상·링크를 끌어다 놓기, ⌘V 붙여넣기', '작업물·컷·섹션에 연결, Claude 분석']],
-  image: ['이미지', '3단계', ['구도 시안 → Higgsfield 생성 → 핀 메모 검수 → 최종 컨펌', '캡션·해시태그 3개 언어 + 한국어 역번역', '언어 버전 만들기, 영상·HTML로 넘기기']],
   video: ['영상', '4단계', ['스토리보드 컨펌 → 제작 → 타임라인 구간 메모', '자막 3개 언어 + 역번역, 최종 컨펌 때 SRT 저장']],
   html: ['HTML', '5단계', ['자사몰(damtix.shop · damtix.eu) 섹션 구성 → 제작 → PC·모바일 미리보기 검수']]
 };
@@ -315,7 +440,7 @@ function vSoon(k) {
 }
 
 /* ---------- 라우터 ---------- */
-const VIEWS = { home: vHome, calendar: vCalendar, brand: vBrand, check: vCheck };
+const VIEWS = { home: vHome, calendar: vCalendar, refs: vRefs, image: vImage, brand: vBrand, check: vCheck };
 let cur = 'home';
 function render() {
   const h = location.hash.replace('#', '');
@@ -324,7 +449,7 @@ function render() {
   renderNav(cur === 'work' ? 'calendar' : cur);
   $('#view').innerHTML = wm ? vWork(wm[1].toUpperCase()) : VIEWS[cur] ? VIEWS[cur]() : vSoon(cur);
 }
-window.addEventListener('hashchange', () => { $('.rail').classList.remove('open'); $('#menuBtn').setAttribute('aria-expanded', 'false'); ui.edit = null; ui.workEdit = null; ui.fixOpen = false; ui.confirmDelete = false; render(); scrollTo(0, 0); refresh(); });
+window.addEventListener('hashchange', () => { $('.rail').classList.remove('open'); $('#menuBtn').setAttribute('aria-expanded', 'false'); ui.edit = null; ui.workEdit = null; ui.fixOpen = false; ui.confirmDelete = false; ui.refPick = null; ui.draftPick = null; ui.pins = {}; ui.finalPick = new Set(); ui.imgFixOpen = false; ui.refDelete = null; render(); scrollTo(0, 0); refresh(); });
 
 async function run(fn) { try { await fn(); } catch (e) { toast(e.message); } }
 function copy(text, done) {
@@ -333,6 +458,13 @@ function copy(text, done) {
 }
 
 document.addEventListener('click', e => {
+  const board = e.target.closest('[data-board]');
+  if (board && !e.target.closest('button,input,a')) {
+    const w = S.works.find(x => x.id === (/^#work-([A-Za-z]+-\d+)$/.exec(location.hash) || [])[1]?.toUpperCase()); if (!w) return;
+    const r = w.image.results.find(x => x.id === board.dataset.board); const rect = board.getBoundingClientRect();
+    ui.pins[r.id] = [...pinsOf(r), { x: +((e.clientX - rect.left) / rect.width * 100).toFixed(1), y: +((e.clientY - rect.top) / rect.height * 100).toFixed(1), note: '' }];
+    render(); const ins = document.querySelectorAll(`[data-pin="${r.id}"]`); ins[ins.length - 1]?.focus(); savePinsSoon(w, r.id); return;
+  }
   const t = e.target.closest('button,a[data-btab]'); if (!t) return;
   if (t.disabled) return;
   const d = t.dataset;
@@ -363,6 +495,38 @@ document.addEventListener('click', e => {
   if (d.act === 'delyes') return run(async () => { const w = cw(); S = (await api(`/api/works/${w.id}/delete`, {})).state; ui.confirmDelete = false; location.hash = 'calendar'; toast(`${w.id}를 지웠어요.`); });
   if (d.act === 'copycmd') return copy('contents controller 대기 작업 처리해줘', '복사했어요. Claude 앱에 붙여넣으세요.');
   if (d.act === 'copycap') { const c = cw().caption.current; return copy([c.text, '', c.hashtags.map(h => h.tag).join(' '), c.mentions.map(m => m.handle).join(' ')].join('\n').trim(), '캡션과 해시태그를 복사했어요. 인스타그램에 붙여넣으세요.'); }
+  if (d.refpick) { ui.refPick = ui.refPick === d.refpick ? null : d.refpick; render(); return; }
+  if (d.refadd) { const [rid, work, part] = d.refadd.split('|'); return run(async () => { S = (await api(`/api/refs/${rid}/link`, { work, part })).state; ui.refPick = null; render(); toast(`${work}에 레퍼런스를 연결했어요.`); }); }
+  if (d.unref) { const [rid, work, part] = d.unref.split('|'); return run(async () => { S = (await api(`/api/refs/${rid}/unlink`, { work, part })).state; render(); toast('연결을 해제했어요. 보관함에는 남아 있어요.'); }); }
+  if (d.refurl !== undefined) { const work = d.refurl; addUrl($(`#refurl-${work || 'lib'}`).value, work); return; }
+  if (d.act === 'refdelask') { ui.refDelete = d.id; render(); return; }
+  if (d.act === 'refdelno') { ui.refDelete = null; render(); return; }
+  if (d.refdel) return run(async () => { S = (await api(`/api/refs/${d.refdel}/delete`, {})).state; ui.refDelete = null; render(); toast('레퍼런스를 지웠어요.'); });
+  if (d.draft) { ui.draftPick = d.draft; render(); return; }
+  if (d.pindel) { const w = cw(); const r = w.image.results.find(x => x.id === d.pindel); ui.pins[r.id] = pinsOf(r).filter((_, i) => i !== Number(d.i)); render(); savePinsSoon(w, r.id); return; }
+  if (d.open) return run(async () => { await api('/api/open', { id: wid(), which: d.open === 'drive' ? 'drive' : 'mac' }); });
+  if (d.act === 'setdrive') return run(async () => { S = (await api('/api/config', { driveFolder: $('#drivesel').value })).state; render(); toast($('#drivesel')?.value ? 'Google Drive 폴더를 저장했어요.' : 'Google Drive 복사를 껐어요.'); });
+  if (d.img) {
+    const w = cw(); if (!w) return;
+    if (d.img === 'fixopen') { ui.imgFixOpen = true; render(); $('#draftfix-note')?.focus(); return; }
+    if (d.img === 'fixcancel') { ui.imgFixOpen = false; render(); return; }
+    const im = w.image || {};
+    const calls = {
+      request: ['image-request', { note: $('#img-note')?.value }, '구도 시안을 Claude에게 맡겼어요.'],
+      again: ['image-request', { note: '' }, '새 버전 구도 시안을 Claude에게 맡겼어요.'],
+      fixdrafts: ['image-fix-drafts', { note: $('#draftfix-note')?.value }, '시안 수정 요청을 보냈어요.'],
+      pick: ['image-pick', { draftId: ui.draftPick || im.drafts?.[0]?.id, note: $('#pick-note')?.value }, '이 시안으로 이미지 만들기를 맡겼어요.'],
+      fixresults: ['image-fix', { note: $('#imgfix-note')?.value }, '수정 요청을 Claude에게 보냈어요.'],
+      final: ['image-final', { resultIds: [...ui.finalPick] }, '최종 처리를 마쳤어요.']
+    };
+    const c = calls[d.img]; if (!c) return;
+    if (d.img === 'final' && !ui.finalPick.size) { toast('최종으로 쓸 이미지를 체크해 주세요.'); return; }
+    return run(async () => {
+      if (d.img === 'final') { ui.busy = true; render(); toast('최적화해서 저장하는 중…'); }
+      try { S = (await api(`/api/works/${w.id}/${c[0]}`, c[1])).state; } finally { ui.busy = false; }
+      ui.imgFixOpen = false; ui.draftPick = null; ui.pins = {}; if (d.img === 'final') ui.finalPick = new Set(); render(); toast(c[2]);
+    });
+  }
   if (d.act === 'menu') { const r = $('.rail'); const open = !r.classList.contains('open'); r.classList.toggle('open', open); t.setAttribute('aria-expanded', open); return; }
   if (d.btab) { ui.btab = d.btab; ui.edit = null; if (t.tagName === 'BUTTON') render(); return; }
   if (d.sku) { ui.sku = d.sku; ui.edit = null; render(); return; }
@@ -382,19 +546,43 @@ document.addEventListener('click', e => {
 document.addEventListener('input', e => {
   const t = e.target;
   if (ui.newWork && t.id?.startsWith('nw-')) { const k = { 'nw-title': 'title', 'nw-memo': 'memo', 'nw-date': 'date' }[t.id]; if (k) ui.newWork[k] = t.value; }
+  if (t.dataset.pin) { const w = S.works.find(x => x.id === (/^#work-([A-Za-z]+-\d+)$/.exec(location.hash) || [])[1]?.toUpperCase()); const r = w.image.results.find(x => x.id === t.dataset.pin); const pins = pinsOf(r).map(p => ({ ...p })); pins[Number(t.dataset.i)].note = t.value; ui.pins[r.id] = pins; savePinsSoon(w, r.id); }
   if (t.dataset.f && ui.edit) ui.edit.draft[t.dataset.f] = t.type === 'checkbox' ? t.checked : t.value;
   if (t.id === 'ereason' && ui.edit) ui.edit.reason = t.value;
   if (t.id === 'ck-text') ui.check.text = t.value;
 });
 document.addEventListener('change', e => { const t = e.target;
+  if (t.dataset.refmemo !== undefined) { run(async () => { S = (await api(`/api/refs/${t.dataset.refmemo}/update`, { memo: t.value })).state; toast('가져올 점을 저장했어요.'); }); }
+  if (t.dataset.reflink && t.value) { const work = t.value; run(async () => { S = (await api(`/api/refs/${t.dataset.reflink}/link`, { work, part: '' })).state; render(); toast(`${work}에 연결했어요.`); }); }
+  if (t.dataset.filefor !== undefined && t.files.length) { uploadFiles([...t.files], t.dataset.filefor); }
+  if (t.dataset.final) { t.checked ? ui.finalPick.add(t.dataset.final) : ui.finalPick.delete(t.dataset.final); }
   if (ui.newWork && t.id?.startsWith('nw-')) { const k = { 'nw-type': 'type', 'nw-acc': 'acc', 'nw-prod': 'prod', 'nw-date': 'date' }[t.id]; if (k) ui.newWork[k] = t.value; if (t.id === 'nw-cap') ui.newWork.cap = t.checked; } if (t.dataset.f && ui.edit && t.type === 'checkbox') ui.edit.draft[t.dataset.f] = t.checked; });
 
 // 다른 곳(Claude 앱, 다른 기기)에서 바뀐 내용을 30초마다 반영. 수정 중일 때는 건드리지 않는다.
 function refresh() {
-  if (ui.edit || ui.workEdit || ui.fixOpen || ui.newWork || document.hidden || ['TEXTAREA', 'INPUT', 'SELECT'].includes(document.activeElement?.tagName)) return;
-  api('/api/state').then(s => { const pick = x => JSON.stringify([x.brand, x.products, x.proposals, x.history[0]?.id, x.info.claudeLastSeen, x.works.map(w => w.updatedAt), x.queue.length]); const changed = pick(s) !== pick(S); S = s; if (changed && cur !== 'check') render(); }).catch(() => {});
+  if (ui.edit || ui.workEdit || ui.fixOpen || ui.newWork || ui.imgFixOpen || ui.busy || Object.keys(ui.pins).length || document.hidden || ['TEXTAREA', 'INPUT', 'SELECT'].includes(document.activeElement?.tagName)) return;
+  api('/api/state').then(s => { const pick = x => JSON.stringify([x.brand, x.products, x.proposals, x.history[0]?.id, x.info.claudeLastSeen, x.works.map(w => w.updatedAt), x.queue.length, x.refs.map(r => r.status + r.links.length)]); const changed = pick(s) !== pick(S); S = s; if (changed && cur !== 'check') render(); }).catch(() => {});
 }
 setInterval(refresh, 10000);
 window.addEventListener('focus', refresh);
 
 api('/api/state').then(s => { S = s; render(); }).catch(e => { $('#view').innerHTML = `<p class="loading">${esc(e.message)}</p>`; });
+
+document.addEventListener('keydown', e => { const t = e.target; if (t.dataset?.urlfor !== undefined && e.key === 'Enter') { e.preventDefault(); addUrl(t.value, t.dataset.urlfor); } });
+// 끌어다 놓기와 붙여넣기: 레퍼런스 화면은 보관함에, 작업 화면은 그 작업에 연결
+const dropWork = () => cur === 'refs' ? '' : cur === 'work' ? (/^#work-([A-Za-z]+-\d+)$/.exec(location.hash) || [])[1]?.toUpperCase() : null;
+document.addEventListener('dragover', e => { if (dropWork() === null) return; e.preventDefault(); const z = e.target.closest?.('[data-drop]') || $('[data-drop]'); document.querySelectorAll('.drop.over').forEach(x => x !== z && x.classList.remove('over')); z?.classList.add('over'); });
+document.addEventListener('dragleave', e => { document.querySelectorAll('.drop.over').forEach(x => { if (!x.contains(e.relatedTarget)) x.classList.remove('over'); }); });
+document.addEventListener('drop', e => {
+  const work = dropWork(); if (work === null) return; e.preventDefault();
+  document.querySelectorAll('.drop.over').forEach(x => x.classList.remove('over'));
+  const dt = e.dataTransfer; if (dt.files?.length) { uploadFiles([...dt.files], work); return; }
+  const u = dt.getData('text/uri-list') || dt.getData('text/plain'); if (u) addUrl(u.split('\n')[0], work);
+});
+document.addEventListener('paste', e => {
+  const work = dropWork(); if (work === null) return;
+  const files = [...(e.clipboardData?.files || [])];
+  if (files.length) { e.preventDefault(); uploadFiles(files, work); return; }
+  const tg = e.target; if (tg.tagName === 'INPUT' || tg.tagName === 'TEXTAREA') return;
+  const txt = e.clipboardData?.getData('text/plain') || ''; if (/^https?:\/\//.test(txt.trim())) { e.preventDefault(); addUrl(txt, work); }
+});

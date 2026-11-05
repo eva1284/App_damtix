@@ -6,14 +6,27 @@ import { z } from 'zod';
 import { ensureData, load, markClaudeSeen } from './lib/store.js';
 import { migrateConfig, productImages, folderMap, collectImages } from './lib/images.js';
 import { ACCOUNTS, DEFS, checkText, addProposal } from './lib/rules.js';
-import { listWorks, getWork, createWork, submitCaption, queue } from './lib/works.js';
+import { listWorks, getWork, createWork, submitCaption } from './lib/works.js';
+import { getRef, refPath, refsFor, submitAnalysis } from './lib/refs.js';
+import { submitDrafts, submitImages, imageForClaude, imageOf } from './lib/imagework.js';
+import { workDir } from './lib/files.js';
+import { finalsConfig } from './lib/finalize.js';
+import { claudeQueue } from './lib/queue.js';
+import sharp from 'sharp';
+import path from 'node:path';
 
 ensureData();
 migrateConfig();
+finalsConfig();
 const server = new McpServer({ name: 'contents-controller', version: '0.1.0' });
 const account = z.enum(['GLOBAL', 'JP', 'EU']);
 
-const ok = data => ({ content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data, null, 2) }] });
+const ok = data => data?.__content ? { content: data.__content } : ({ content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data, null, 2) }] });
+// Claude가 직접 볼 수 있게 이미지를 돌려준다 (긴 변 1568px JPEG로 줄여서)
+async function imageContent(file) {
+  const data = await sharp(file, { density: 144 }).rotate().resize({ width: 1568, height: 1568, fit: 'inside', withoutEnlargement: true }).flatten({ background: '#ffffff' }).jpeg({ quality: 82 }).toBuffer();
+  return { type: 'image', data: data.toString('base64'), mimeType: 'image/jpeg' };
+}
 const err = e => ({ isError: true, content: [{ type: 'text', text: e.message || String(e) }] });
 function tool(name, config, handler) {
   server.registerTool(name, config, async args => {
@@ -113,18 +126,19 @@ const pair = (key, desc) => z.array(z.object({ [key]: z.string(), ko: z.string()
 tool('list_queue', {
   title: 'Claude가 할 일 목록',
   description: [
-    '사용자가 contents controller에서 Claude에게 맡긴 일을 본다. 사용자가 "contents controller 대기 작업 처리해줘"라고 하면 이것부터 호출해서 하나씩 처리한다.',
-    '캡션 쓰기/고치기 처리 순서:',
-    '1) get_brand_guide(account)와 get_product(product)로 기준을 읽는다.',
-    '2) 그 계정 언어로 처음부터 현지화해서 쓴다 (한국어 기획을 직역하지 않는다). JP는 일본 판매명을 쓰고, 효능은 허용 범위 표현만 쓴다.',
-    '3) 해시태그는 그 나라에서 실제로 많이 쓰는 태그로 고르고, 각 태그에 한국어 뜻을 붙인다.',
-    '4) 한국어 역번역은 원래 한국어 기획을 보지 말고 외국어 원문만 보고 다시 옮긴다. 뜻이 달라졌는지 사용자가 찾을 수 있게 하기 위해서다.',
-    '5) check_text로 검사한 뒤 submit_caption으로 보낸다. 고치기(fixRequest가 있음)는 currentCaption을 고쳐서 보낸다.',
-    '모두 끝나면 처리한 작업 번호와 한 줄 요약을 한국어로 알려 준다.'
+    '사용자가 contents controller에서 Claude에게 맡긴 일을 본다. 사용자가 "contents controller 대기 작업 처리해줘"라고 하면 이것부터 호출해서 하나씩 처리한다. 모두 끝나면 처리한 번호와 한 줄 요약을 한국어로 알려 준다.',
+    '',
+    '[캡션 쓰기/고치기] get_brand_guide(account)와 get_product(product)로 기준을 읽고, 그 계정 언어로 처음부터 현지화해서 쓴다(직역 금지). 해시태그는 그 나라에서 실제로 쓰는 태그 + 한국어 뜻. 한국어 역번역은 원래 기획을 보지 말고 외국어 원문만 보고 옮긴다. check_text 후 submit_caption.',
+    '',
+    '[레퍼런스 분석] get_reference로 이미지를 직접 보고 구도·빛·색감·소품·문구 위치를 한국어 3~5문장으로 정리해 submit_reference_analysis로 보낸다. 영상이나 볼 수 없는 링크는 볼 수 없다고 적고, 사용자에게 캡처를 부탁한다고 쓴다.',
+    '',
+    '[구도 시안 만들기/고치기] 실제 생성 전에 크레딧 없이 보는 컴퓨터 스케치다. 기획 메모, request.note, 연결된 레퍼런스(references, part가 있으면 그 부분용), 브랜드 비주얼 기준을 보고, 4:5(1080x1350) 비율 viewBox의 단순한 SVG 2~3개를 만든다: 무채색 도형으로 제품 위치·크기, 모델/손 위치, 문구 자리, 소품, 빛 방향을 표시하고 한국어 라벨을 붙인다. 고치기는 latestFix.note를 반영한다. submit_drafts로 보낸다.',
+    '',
+    '[이미지 만들기/고치기] image.pickedDraft(고른 구도 SVG 파일과 메모)를 따른다. get_product로 그 제품의 기준 이미지(referenceImages)를 항상 참조 이미지로 쓰고, 모델이 나오면 get_image_folders의 realModels/aiModels 사진을 써서 얼굴을 유지한다. Higgsfield로 생성하기 전에 예상 크레딧을 사용자에게 먼저 알리고 확인을 받는다. 결과는 submit_images로 보낸다(주소 url 또는 Mac 파일 path). 고치기는 latestFix의 핀(x,y는 왼쪽 위 기준 %)과 메모를 반영하고, view_work_image로 지금 결과를 보고 고친다. 그림 속 문구는 그 계정 언어로 쓰고 check_text로 검사한다.'
   ].join('\n'),
   inputSchema: {}
 }, () => {
-  const q = queue();
+  const q = claudeQueue();
   return q.length ? q : '지금 Claude가 처리할 일이 없어요.';
 });
 
@@ -132,7 +146,10 @@ tool('get_work', {
   title: '작업 하나 보기',
   description: '작업물(IMG-001, VID-002, HTML-003 같은 번호) 하나의 기획, 캡션, 수정 요청, 기록을 본다.',
   inputSchema: { id: z.string() }
-}, ({ id }) => getWork(id));
+}, ({ id }) => {
+  const w = getWork(id);
+  return { ...w, image: w.type === 'image' ? imageForClaude(w) : undefined, references: refsFor(w.id).map(r => ({ id: r.id, title: r.title, kind: r.kind, memo: r.memo, analysis: r.analysis, parts: r.links.filter(l => l.work === w.id).map(l => l.part || '전체') })) };
+});
 
 tool('list_works', {
   title: '게시 일정 보기',
@@ -156,6 +173,58 @@ tool('create_work', {
 }, a => {
   const w = createWork({ type: a.type, account: a.account, store: a.store, product: a.product, date: a.date, title: a.title, memo: a.memo, requestCaption: a.request_caption }, 'Claude');
   return `${w.id}를 만들었어요 (${w.date}, ${w.account}, ${w.product}). 사용자는 contents controller 캘린더에서 볼 수 있어요.`;
+});
+
+tool('get_reference', {
+  title: '레퍼런스 보기',
+  description: '레퍼런스 하나의 정보와, 이미지 파일이면 그림 자체를 본다. 분석할 때나 시안·이미지를 만들 때 참고한다.',
+  inputSchema: { id: z.string().describe('REF-001 같은 번호') }
+}, async ({ id }) => {
+  const r = getRef(id);
+  const info = { id: r.id, kind: r.kind, source: r.source, title: r.title, url: r.url || undefined, memo: r.memo, analysis: r.analysis || undefined, linkedTo: r.links };
+  const content = [{ type: 'text', text: JSON.stringify(info, null, 2) }];
+  if (r.kind === 'image' && r.file) content.push(await imageContent(refPath(r)));
+  else if (r.kind === 'video' && r.file) content.push({ type: 'text', text: '영상 파일이라 직접 볼 수 없어요. 제목과 메모로 판단하거나, 사용자에게 장면 캡처를 부탁하세요.' });
+  else if (r.url) content.push({ type: 'text', text: '링크 레퍼런스예요. 열어 볼 수 있으면 열어 보고, 로그인이 필요해서 못 보면 사용자에게 캡처를 부탁하세요.' });
+  return { __content: content };
+});
+
+tool('submit_reference_analysis', {
+  title: '레퍼런스 분석 보내기',
+  description: '레퍼런스를 보고 한국어로 정리한 분석(구도, 빛, 색감, 소품, 문구 위치, 영상이면 컷 길이)을 보낸다. 태그는 구도·색감·분위기·모션·컷 구성·소품 중에서 고른다.',
+  inputSchema: { id: z.string(), summary: z.string().describe('한국어 3~5문장'), tags: z.array(z.string()).optional(), title: z.string().optional().describe('알아보기 쉬운 한국어 제목 (선택)') }
+}, ({ id, summary, tags, title }) => { const r = submitAnalysis({ id, summary, tags, title }); return `${r.id} 분석을 저장했어요.`; });
+
+tool('submit_drafts', {
+  title: '구도 시안 보내기',
+  description: '이미지 작업의 구도 시안(SVG 스케치) 2~3개를 보낸다. viewBox는 4:5 비율(예: 0 0 1080 1350). 무채색 도형과 한국어 라벨만 쓰고, 사진이나 외부 링크는 넣지 않는다. 사용자가 하나를 고르면 그 구도로 이미지를 만든다.',
+  inputSchema: {
+    work_id: z.string(),
+    drafts: z.array(z.object({ title: z.string().describe('예: 시안 A · 제품 정면 클로즈업'), note: z.string().describe('한국어 한두 문장: 구도 의도'), svg: z.string() })).min(1).max(4)
+  }
+}, ({ work_id, drafts }) => { const w = submitDrafts(work_id, drafts); return `${w.id} 구도 시안 ${drafts.length}개를 보냈어요. 사용자가 고를 차례예요.`; });
+
+tool('submit_images', {
+  title: '만든 이미지 보내기',
+  description: 'Higgsfield 등으로 만든 이미지를 작업에 보낸다. 각 이미지는 내려받을 수 있는 주소(url) 또는 Mac의 파일 경로(path)로 준다. 사용한 프롬프트와 모델도 적는다. 보내면 사용자가 핀 메모로 검수한다.',
+  inputSchema: {
+    work_id: z.string(),
+    images: z.array(z.object({ url: z.string().optional(), path: z.string().optional(), prompt: z.string().optional(), model: z.string().optional() })).min(1).max(8),
+    note: z.string().optional().describe('사용자에게 남길 한국어 한 줄 (예: 사용한 크레딧, 바꾼 점)')
+  }
+}, async ({ work_id, images, note }) => { const w = await submitImages(work_id, images, note); return `${w.id} 이미지 ${images.length}장을 보냈어요. 사용자가 검수할 차례예요.`; });
+
+tool('view_work_image', {
+  title: '작업 이미지 보기',
+  description: '작업의 구도 시안(D1-1 같은 번호)이나 결과 이미지(R1-1 같은 번호)를 직접 본다. 수정 요청을 반영하기 전에 지금 상태를 확인할 때 쓴다.',
+  inputSchema: { work_id: z.string(), item_id: z.string().describe('D로 시작하면 구도 시안, R로 시작하면 결과 이미지') }
+}, async ({ work_id, item_id }) => {
+  const w = getWork(work_id);
+  const im = imageOf(w);
+  const item = [...im.drafts, ...im.results].find(x => x.id === String(item_id).toUpperCase());
+  if (!item) throw new Error(`${work_id}에 ${item_id}가 없어요. get_work로 번호를 확인하세요.`);
+  const pins = item.pins?.length ? `\n핀 메모 (x,y는 왼쪽 위 기준 %): ${item.pins.map((p, i) => `${i + 1}) (${p.x.toFixed(0)}%, ${p.y.toFixed(0)}%) ${p.note}`).join(' / ')}` : '';
+  return { __content: [{ type: 'text', text: `${w.id} ${item.id}${item.title ? ` · ${item.title}` : ''}${pins}` }, await imageContent(path.join(workDir(w.id), item.file))] };
 });
 
 tool('submit_caption', {

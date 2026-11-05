@@ -7,12 +7,19 @@ import crypto from 'node:crypto';
 import { APP_DIR, DATA_DIR, ensureData, load, save, claudeLastSeen } from './lib/store.js';
 import { DEFS, ACCOUNTS, applyChange, rollback, acceptProposal, rejectProposal, checkText } from './lib/rules.js';
 import { IMAGE_EXT, migrateConfig, productImages, folderMap, listTopFolders, setFolders } from './lib/images.js';
-import { TYPES as WORK_TYPES, STORES, CAPTION_STATUS, listWorks, createWork, updateWork, deleteWork, requestCaption, fixCaption, confirmCaption, reopenCaption, queue } from './lib/works.js';
+import { spawn } from 'node:child_process';
+import { listRefs, getRef, refPath, addFileRef, addUrlRef, updateRef, link as linkRef, unlink as unlinkRef, deleteRef, dropWorkLinks } from './lib/refs.js';
+import { IMAGE_STAGE, requestDrafts, fixDrafts, pickDraft, savePins, fixResults, finalConfirm } from './lib/imagework.js';
+import { finalsConfig, setFinals, driveCandidates } from './lib/finalize.js';
+import { claudeQueue } from './lib/queue.js';
+import { WORK_DIR, REF_DIR } from './lib/files.js';
+import { TYPES as WORK_TYPES, STORES, CAPTION_STATUS, listWorks, createWork, updateWork, deleteWork, requestCaption, fixCaption, confirmCaption, reopenCaption } from './lib/works.js';
 
 ensureData();
 migrateConfig();
+finalsConfig();
 const PUBLIC_DIR = path.join(APP_DIR, 'public');
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.avif': 'image/avif', '.heic': 'image/heic', '.tif': 'image/tiff', '.tiff': 'image/tiff', '.json': 'application/json' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.avif': 'image/avif', '.heic': 'image/heic', '.tif': 'image/tiff', '.tiff': 'image/tiff', '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.json': 'application/json' };
 
 const isLocal = req => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
 const codeHash = code => crypto.createHash('sha256').update(`cc:${code}`).digest('hex').slice(0, 32);
@@ -43,6 +50,16 @@ function readBody(req) {
   });
 }
 
+// 레퍼런스 파일 올리기: 본문을 그대로 받는다 (최대 300MB)
+function readRaw(req, max = 300 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    let size = 0; const chunks = [];
+    req.on('data', c => { size += c.length; if (size > max) { reject(new Error('파일이 너무 커요 (300MB 초과).')); req.destroy(); } else chunks.push(c); });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
 function sendFile(res, file) {
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) return fail(res, 404, '파일이 없어요.');
@@ -58,9 +75,10 @@ function state(req) {
     brand: load('brand'), products: load('products'), proposals: load('proposals'),
     history: load('history').map(({ snapshot, ...h }) => h),
     defs: DEFS, accounts: ACCOUNTS, types: WORK_TYPES, stores: STORES, captionStatus: CAPTION_STATUS,
-    works: listWorks(), queue: queue(),
+    works: listWorks(), queue: claudeQueue(), refs: listRefs(), imageStage: IMAGE_STAGE,
     info: {
       local, imageRoot: config.imageRoot, imageRootExists: fs.existsSync(config.imageRoot), folders: folderMap(),
+      finals: { ...finalsConfig(), driveExists: !!config.driveFolder && fs.existsSync(config.driveFolder), driveCandidates: local ? driveCandidates() : [] },
       claudeLastSeen: claudeLastSeen(), dataDir: local ? DATA_DIR : undefined,
       phone: local ? { urls: lanUrls(config.port), accessCode: config.accessCode } : undefined
     }
@@ -113,8 +131,41 @@ async function route(req, res) {
   m = /^\/api\/works\/([A-Za-z]+-\d+)\/(update|delete|caption-request|caption-fix|caption-confirm|caption-reopen)$/.exec(p);
   if (m && req.method === 'POST') {
     const b = await readBody(req), id = m[1], by = who(req);
-    const w = { update: () => updateWork(id, b, by), delete: () => deleteWork(id), 'caption-request': () => requestCaption(id, b.note, by), 'caption-fix': () => fixCaption(id, b.note, by), 'caption-confirm': () => confirmCaption(id, by), 'caption-reopen': () => reopenCaption(id, by) }[m[2]]();
+    const w = { update: () => updateWork(id, b, by), delete: () => { const r = deleteWork(id); dropWorkLinks(r.id); fs.rmSync(path.join(WORK_DIR, r.id), { recursive: true, force: true }); return r; }, 'caption-request': () => requestCaption(id, b.note, by), 'caption-fix': () => fixCaption(id, b.note, by), 'caption-confirm': () => confirmCaption(id, by), 'caption-reopen': () => reopenCaption(id, by) }[m[2]]();
     return send(res, 200, { work: w, state: state(req) });
+  }
+  // 이미지 제작 단계
+  m = /^\/api\/works\/([A-Za-z]+-\d+)\/image-(request|fix-drafts|pick|pins|fix|final)$/.exec(p);
+  if (m && req.method === 'POST') {
+    const b = await readBody(req), id = m[1], by = who(req);
+    const w = await ({ request: () => requestDrafts(id, b.note, by), 'fix-drafts': () => fixDrafts(id, b.note, by), pick: () => pickDraft(id, b.draftId, b.note, by), pins: () => savePins(id, b.resultId, b.pins, by), fix: () => fixResults(id, b.note, by), final: () => finalConfirm(id, b.resultIds, by) }[m[2]])();
+    return send(res, 200, { work: w, state: state(req) });
+  }
+  // 레퍼런스
+  if (p === '/api/refs/upload' && req.method === 'POST') {
+    const buffer = await readRaw(req);
+    const filename = decodeURIComponent(req.headers['x-filename'] || 'file');
+    const work = req.headers['x-work'] ? String(req.headers['x-work']).toUpperCase() : undefined;
+    return send(res, 200, { ref: addFileRef({ buffer, filename, work }), state: state(req) });
+  }
+  if (p === '/api/refs/url' && req.method === 'POST') {
+    const b = await readBody(req);
+    return send(res, 200, { ref: addUrlRef({ url: b.url, work: b.work }), state: state(req) });
+  }
+  m = /^\/api\/refs\/(REF-\d+)\/(update|link|unlink|delete)$/.exec(p);
+  if (m && req.method === 'POST') {
+    const b = await readBody(req), id = m[1];
+    const r = { update: () => updateRef(id, b), link: () => linkRef(id, String(b.work).toUpperCase(), b.part || ''), unlink: () => unlinkRef(id, String(b.work).toUpperCase(), b.part), delete: () => deleteRef(id) }[m[2]]();
+    return send(res, 200, { ref: r, state: state(req) });
+  }
+  if (p === '/api/open' && req.method === 'POST') {
+    if (!isLocal(req) || process.platform !== 'darwin') return fail(res, 403, '폴더 열기는 Mac에서만 돼요.');
+    const b = await readBody(req);
+    const w = listWorks().find(x => x.id === String(b.id).toUpperCase());
+    const target = b.which === 'drive' ? w?.image?.final?.drive?.path : w?.image?.final?.folder;
+    if (!target || !fs.existsSync(target)) return fail(res, 404, '폴더를 찾을 수 없어요.');
+    spawn('open', [target], { detached: true, stdio: 'ignore' }).unref();
+    return send(res, 200, { ok: true });
   }
   if (p === '/api/check' && req.method === 'POST') return send(res, 200, checkText(await readBody(req)));
   if (p === '/api/config' && req.method === 'POST') {
@@ -124,6 +175,7 @@ async function route(req, res) {
     if (typeof b.imageRoot === 'string' && b.imageRoot.trim()) config.imageRoot = b.imageRoot.trim().replace(/^~(?=\/|$)/, os.homedir());
     save('config', config);
     if (b.productFolders || b.otherFolders) setFolders(b);
+    if (b.finalsFolder !== undefined || b.driveFolder !== undefined) setFinals(b);
     return send(res, 200, { state: state(req) });
   }
   if (p === '/file' && req.method === 'GET') {
@@ -131,6 +183,17 @@ async function route(req, res) {
     const abs = path.resolve(root, url.searchParams.get('rel') || '');
     if (!abs.startsWith(root + path.sep) || !IMAGE_EXT.has(path.extname(abs).toLowerCase())) return fail(res, 403, '이 파일은 열 수 없어요.');
     return sendFile(res, abs);
+  }
+  if (p === '/ref-file' && req.method === 'GET') {
+    let r; try { r = getRef(url.searchParams.get('id') || ''); } catch { return fail(res, 404, '파일이 없어요.'); }
+    return r.file ? sendFile(res, path.join(REF_DIR, r.file)) : fail(res, 404, '파일이 없는 레퍼런스예요.');
+  }
+  if (p === '/work-file' && req.method === 'GET') {
+    const id = String(url.searchParams.get('id') || '').toUpperCase(), f = url.searchParams.get('f') || '';
+    if (!/^[A-Z]+-\d+$/.test(id) || !/^[\w.-]+$/.test(f)) return fail(res, 400, '잘못된 파일이에요.');
+    const file = path.join(WORK_DIR, id, f);
+    if (f.endsWith('.svg')) { res.setHeader('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'"); }
+    return sendFile(res, file);
   }
   if (p.startsWith('/api/')) return fail(res, 404, '없는 기능이에요.');
 
