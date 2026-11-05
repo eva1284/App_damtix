@@ -50,7 +50,7 @@ test('브랜드 기준에서 자막 디자인 고치기: 없는 글꼴·범위 �
   assert.equal(sub.position, '60');
   assert.equal(S.subtitleStyle().color, 'black');
   rollback(before);
-  assert.equal(store.load('brand').subtitle.size, '50');
+  assert.equal(store.load('brand').subtitle.size, '42');
 });
 
 test('ASS 자막: 글꼴 전체 이름, 높이, 흰/검정 글씨, 일본어 줄바꿈, 특수문자', () => {
@@ -58,8 +58,9 @@ test('ASS 자막: 글꼴 전체 이름, 높이, 흰/검정 글씨, 일본어 줄
   const segs = [{ start: 0, end: 2.5, text: 'Hello {world}\nline' }, { start: 2.5, end: 5, text: 'あ'.repeat(30) }];
   const en = S.toAss(segs, { style, account: 'GLOBAL', width: 1080, height: 1920, colors: ['white', 'black'] });
   assert.match(en, /Style: W,Epilogue Bold,60,&H00FFFFFF/);
+  assert.match(en, /,100,100,-2\.40,0,1,/); // 영어 자간 -0.04em
   assert.match(en, /Style: B,Epilogue Bold,60,&H001F1D1D/);
-  assert.match(en, /,2,90,90,768,1/); // 1920 × (1 - 0.60)
+  assert.match(en, /,2,227,227,768,1/); // 폭 58%, 1920 × (1 - 0.60)
   assert.match(en, /Dialogue: 0,0:00:00\.00,0:00:02\.50,W,.*Hello \(world\)\\Nline/);
   assert.match(en, /Dialogue: 0,0:00:02\.50,0:00:05\.00,B,/);
   const jp = S.toAss(segs, { style, account: 'JP', width: 720, height: 1280, colors: [] });

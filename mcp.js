@@ -3,7 +3,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { ensureData, load, markClaudeSeen } from './lib/store.js';
+import { ensureData, load, markClaudeSeen, APP_DIR } from './lib/store.js';
 import { migrateConfig, productImages, folderMap, collectImages } from './lib/images.js';
 import { ACCOUNTS, DEFS, checkText, addProposal } from './lib/rules.js';
 import { listWorks, getWork, createWork, submitCaption } from './lib/works.js';
@@ -14,10 +14,13 @@ import { MOTION_GUIDE, listTemplates, getTemplate, closeBrowser } from './lib/mo
 import { workDir } from './lib/files.js';
 import { finalsConfig } from './lib/finalize.js';
 import { claudeQueue } from './lib/queue.js';
+import { applyHandover } from './lib/handover.js';
 import sharp from 'sharp';
 import path from 'node:path';
+import fs from 'node:fs';
 
 ensureData();
+applyHandover();
 migrateConfig();
 finalsConfig();
 const server = new McpServer({ name: 'contents-controller', version: '0.1.0' });
@@ -44,13 +47,23 @@ function referenceImages(code) {
   return { folder: r.folder, count: r.count, truncated: r.truncated, groups: r.groups.map(g => ({ name: g.name, files: g.files.map(f => f.abs) })) };
 }
 
+// 작업 종류별로 읽을 브랜드 기준 (토큰을 아끼려고 필요한 것만)
+const TOPICS = {
+  caption: ['facts', 'event'],
+  image: ['imagegen', 'facts'],
+  video: ['reels', 'imagegen'],
+  motion: ['reels', 'event'],
+  event: ['event'],
+  web: ['web', 'facts']
+};
 tool('get_brand_guide', {
   title: '브랜드 기준 읽기',
-  description: 'Damtix 브랜드 기준(절대 원칙)을 읽는다. 캡션·자막·이미지 문구·HTML을 만들거나 고치기 전에 반드시 먼저 호출한다. account를 주면 그 인스타그램 계정의 톤과 금지 표현만 골라 준다.',
-  inputSchema: { account: account.optional().describe('GLOBAL(@damtix.global, 영어 미국), JP(@damtix.jp, 일본어), EU(@damtix_eu, 프랑스어만)') }
-}, ({ account: acc }) => {
+  description: 'Damtix 브랜드 기준(절대 원칙)과 작업 규칙을 읽는다. 캡션·자막·이미지·영상·HTML을 만들거나 고치기 전에 반드시 먼저 호출한다. account를 주면 그 인스타그램 계정의 톤과 금지 표현만, topic을 주면 그 작업의 규칙(caption 캡션·자막, image 이미지 생성·캐러셀, video 영상·릴스, motion 모션 그래픽, event 이벤트·당첨자, web 쇼피파이)을 함께 준다.',
+  inputSchema: { account: account.optional().describe('GLOBAL(@damtix.global, 영어 미국), JP(@damtix.jp, 일본어), EU(@damtix_eu, 프랑스어만)'), topic: z.enum(['caption', 'image', 'video', 'motion', 'event', 'web']).optional() }
+}, ({ account: acc, topic }) => {
   const b = load('brand');
   const accounts = acc ? { [acc]: ACCOUNTS[acc] } : ACCOUNTS;
+  const sec = k => ({ title: DEFS.brand[k]?.title, ...b[k] });
   return {
     brandVersion: `v${b.version}`,
     source: b.source,
@@ -58,8 +71,22 @@ tool('get_brand_guide', {
     core: b.core,
     accounts: Object.fromEntries(Object.entries(accounts).map(([k, a]) => [k, { ...a, tone: b.tone[k], banned: splitWords(b.rules[`${k}_ban`]), useInstead: b.rules[`${k}_alt`] }])),
     allAccounts: { banned: splitWords(b.rules.ALL_ban), useInstead: b.rules.ALL_alt },
-    visual: b.visual
+    visual: b.visual,
+    work: sec('work'),
+    ...(topic ? Object.fromEntries(TOPICS[topic].map(k => [k, sec(k)])) : { moreRules: 'topic을 주면 그 작업의 규칙을 더 준다: caption, image, video, motion, event, web' })
   };
+});
+
+tool('get_handover_notes', {
+  title: '이전 작업 인수인계서 보기',
+  description: '프로그램이 생기기 전 이전 AI가 남긴 인수인계서(2026-10-26~11-05)의 한 장을 읽는다. 주요 규칙은 이미 브랜드 기준에 들어 있으니, 그 밖의 세부 절차가 필요할 때만 읽는다: 8 Figma 카탈로그, 6 CapCut draft 수정 절차·16:9→9:16 릴스, 10 지난 프로젝트 이력·폴더, 11 도구·경로, 13 열린 이슈. chapter를 비우면 목차.',
+  inputSchema: { chapter: z.number().int().min(1).max(14).optional() }
+}, ({ chapter }) => {
+  const doc = fs.readFileSync(path.join(APP_DIR, 'docs', 'handover-2026-11-05.md'), 'utf8');
+  const parts = doc.split(/\n(?=## \d+\. )/);
+  if (!chapter) return parts.slice(1).map(p => p.split('\n')[0].replace('## ', '')).join('\n');
+  const hit = parts.find(p => p.startsWith(`## ${chapter}. `));
+  return hit ? `${hit.trim()}\n\n(이 문서는 과거 기록이에요. 폴더·파일 상태는 바뀌었을 수 있으니 직접 확인하고, 브랜드 기준과 다르면 브랜드 기준을 따른다.)` : '그 장이 없어요.';
 });
 
 tool('list_products', {
@@ -67,7 +94,7 @@ tool('list_products', {
   description: 'Damtix 제품(SKU) 목록과 시장별 판매 여부를 본다. account를 주면 그 계정에서 쓸 수 있는 제품만 sellable=true로 표시한다.',
   inputSchema: { account: account.optional() }
 }, ({ account: acc }) => load('products').map(p => ({
-  code: p.code, version: `v${p.version}`, names: p.names, volume: p.volume, markets: p.markets,
+  code: p.code, version: `v${p.version}`, names: p.names, volume: p.volume, markets: p.markets, look: p.look || undefined, tests: p.tests || undefined,
   ...(acc ? { sellable: !!p.markets[ACCOUNTS[acc].market] } : {})
 })));
 
@@ -133,6 +160,8 @@ tool('list_queue', {
     '[캡션 쓰기/고치기] get_brand_guide(account)와 get_product(product)로 기준을 읽고, 그 계정 언어로 처음부터 현지화해서 쓴다(직역 금지). 해시태그는 그 나라에서 실제로 쓰는 태그 + 한국어 뜻. 한국어 역번역은 원래 기획을 보지 말고 외국어 원문만 보고 옮긴다. check_text 후 submit_caption.',
     '',
     '[레퍼런스 분석] get_reference로 이미지를 직접 보고 구도·빛·색감·소품·문구 위치를 한국어 3~5문장으로 정리해 submit_reference_analysis로 보낸다. 영상이나 볼 수 없는 링크는 볼 수 없다고 적고, 사용자에게 캡처를 부탁한다고 쓴다.',
+    '',
+    '모든 작업은 시작 전에 get_brand_guide(account, topic)를 읽는다: 캡션·자막 caption, 이미지 image, 영상 video, 모션 그래픽 motion, 이벤트 event. 기준의 work(Claude 작업 방식)를 따른다(하나만 먼저, 크레딧 견적·보고, 게시 금지, 외국어 검수표).',
     '',
     '[구도 시안 만들기/고치기] 실제 생성 전에 크레딧 없이 보는 컴퓨터 스케치다. 요청 메모에 여러 컷(캐러셀, 스토리)이 있거나 image.cuts가 미리 정해져 있으면 submit_drafts의 cuts로 컷마다 시안을 보낸다(미리 정한 컷은 그 순서·설명을 따른다). 기획 메모, request.note, 연결된 레퍼런스(references, part가 있으면 그 부분용), 브랜드 비주얼 기준을 보고, 4:5(1080x1350) 비율 viewBox의 단순한 SVG 2~3개를 만든다: 무채색 도형으로 제품 위치·크기, 모델/손 위치, 문구 자리, 소품, 빛 방향을 표시하고 한국어 라벨을 붙인다. 고치기는 latestFix.note를 반영한다. submit_drafts로 보낸다.',
     '',

@@ -13,18 +13,21 @@
       "KR": "19% 다크스팟 세럼",
       "EN": "19% Dark Spot Serum",
       "JP": "",
-      "FR": ""
+      "FR": "",
+      "JPkind": ""
     },
     "keyIngredients": "나이아신아마이드 15%, 마트릭실 3%, 그린티 캘러스 1%, 트라넥삼산, 3-O-에틸아스코빌산",
     "usage": "토너 후 마른 피부에 2~3방울. 낮에는 SPF 30 이상과 함께",
-    "rules": "미국 전용 제품. 일본·유럽 콘텐츠에 쓰지 않음\n고함량 나이아신아마이드: 패치 테스트 안내를 함께",
+    "rules": "미국 전용 제품. 일본·유럽 콘텐츠에 쓰지 않음\n고함량 나이아신아마이드: 패치 테스트 안내를 함께\n미국만 판매. 일본·프랑스(유럽) 콘텐츠·카탈로그에서 제외",
     "registration": {
       "ean": "8800284710099",
       "mocra": "53-646467-981891",
       "cpnp": "",
       "paoMonths": 24
     },
-    "inci": "Water (Aqua), Niacinamide, Methylpropanediol, Ethoxydiglycol, Tranexamic Acid, Glycerin, 1,2-Hexanediol, Butylene Glycol, Benzyl Glycol, Hydrolyzed Lupine Protein, Sodium Polyacrylate, Adenosine, Ethylhexylglycerin, Disodium EDTA, Carbomer, Sodium Lactate, Polysorbate 20, Sodium Hyaluronate, Carthamus Tinctorius (Safflower) Flower Extract, Camellia Sinensis Callus Extract, Dextrin, Gardenia Florida Fruit Extract, Palmitoyl Tripeptide-1, Palmitoyl Tetrapeptide-7, Sodium Hyaluronate Crosspolymer, Potassium Hyaluronate, Sodium Acetylated Hyaluronate, Hyaluronic Acid, Hydrolyzed Hyaluronic Acid, Hydroxypropyltrimonium Hyaluronate, Hydrolyzed Sodium Hyaluronate, 3-O-Ethyl Ascorbic Acid, Panthenol"
+    "inci": "Water (Aqua), Niacinamide, Methylpropanediol, Ethoxydiglycol, Tranexamic Acid, Glycerin, 1,2-Hexanediol, Butylene Glycol, Benzyl Glycol, Hydrolyzed Lupine Protein, Sodium Polyacrylate, Adenosine, Ethylhexylglycerin, Disodium EDTA, Carbomer, Sodium Lactate, Polysorbate 20, Sodium Hyaluronate, Carthamus Tinctorius (Safflower) Flower Extract, Camellia Sinensis Callus Extract, Dextrin, Gardenia Florida Fruit Extract, Palmitoyl Tripeptide-1, Palmitoyl Tetrapeptide-7, Sodium Hyaluronate Crosspolymer, Potassium Hyaluronate, Sodium Acetylated Hyaluronate, Hyaluronic Acid, Hydrolyzed Hyaluronic Acid, Hydroxypropyltrimonium Hyaluronate, Hydrolyzed Sodium Hyaluronate, 3-O-Ethyl Ascorbic Acid, Panthenol",
+    "look": "",
+    "tests": "한국피부과학연구소 24시간 첩포(비자극)"
   },
   {
     "code": "GTCP",
@@ -40,18 +43,21 @@
       "KR": "그린티 캘러스 PDRN 세럼",
       "EN": "Green Tea Callus PDRN Serum",
       "JP": "ダムティックスGTCPセラム",
-      "FR": "Green Tea Callus PDRN Serum"
+      "FR": "Green Tea Callus PDRN Serum",
+      "JPkind": "美容液"
     },
     "keyIngredients": "소듐디엔에이(PDRN), 그린티 캘러스, 나이아신아마이드, 아데노신, 세라마이드NP",
     "usage": "세안·토너 후 적당량을 피부결 따라 펴 바름. 리페어 크림과 섞어 써도 됨",
-    "rules": "\"PDRN으로 재생\"처럼 성분명으로 효능 주장 금지\n시술 후 사용은 의사 지시를 따르도록 안내",
+    "rules": "\"PDRN으로 재생\"처럼 성분명으로 효능 주장 금지\n시술 후 사용은 의사 지시를 따르도록 안내\n비건·식물 유래라고 쓰지 않음",
     "registration": {
       "ean": "8800284710082",
       "mocra": "53-505810-895878",
       "cpnp": "5712541",
       "paoMonths": 24
     },
-    "inci": "Water (Aqua), Butylene Glycol, 1,2-Hexanediol, Propanediol, Niacinamide, Hydrogenated Polydecene, Panthenol, Sodium Hyaluronate, Hyaluronic Acid, Hydrolyzed Hyaluronic Acid, Carbomer, Arginine, Pentylene Glycol, Glycerin, Methylpropanediol, Inulin Lauryl Carbamate, Adenosine, Gellan Gum, Agar, Xanthan Gum, Polyglutamic Acid, Sodium Phytate, Pantolactone, Camellia Sinensis Leaf Water, Ubiquinone, Ethylhexylglycerin, Caprylic/Capric Triglyceride, Hydrolyzed Elastin, Hydrogenated Lecithin, Ceramide NP, Camellia Sinensis Callus Culture Extract, Sodium DNA, Camellia Sinensis Leaf Extract, Glutathione, Oryza Sativa (Rice) Extract"
+    "inci": "Water (Aqua), Butylene Glycol, 1,2-Hexanediol, Propanediol, Niacinamide, Hydrogenated Polydecene, Panthenol, Sodium Hyaluronate, Hyaluronic Acid, Hydrolyzed Hyaluronic Acid, Carbomer, Arginine, Pentylene Glycol, Glycerin, Methylpropanediol, Inulin Lauryl Carbamate, Adenosine, Gellan Gum, Agar, Xanthan Gum, Polyglutamic Acid, Sodium Phytate, Pantolactone, Camellia Sinensis Leaf Water, Ubiquinone, Ethylhexylglycerin, Caprylic/Capric Triglyceride, Hydrolyzed Elastin, Hydrogenated Lecithin, Ceramide NP, Camellia Sinensis Callus Culture Extract, Sodium DNA, Camellia Sinensis Leaf Extract, Glutathione, Oryza Sativa (Rice) Extract",
+    "look": "뚜껑은 전부 크롬인 짧고 넓은 원통 + 위에 둥근 크롬 푸시 버튼. 흰 고무 스포이트 볼은 없음(AI가 자주 달아 놓으니 실물 사진과 대조). 캡슐 제형",
+    "tests": "한국피부과학연구소 24시간 첩포(비자극)"
   },
   {
     "code": "GTCN",
@@ -67,18 +73,21 @@
       "KR": "그린티 캘러스 NMN 세럼",
       "EN": "Green Tea Callus NMN Serum",
       "JP": "ダムティックスGTCNセラム",
-      "FR": "Green Tea Callus NMN Serum"
+      "FR": "Green Tea Callus NMN Serum",
+      "JPkind": "美容液"
     },
     "keyIngredients": "NMN, 그린티 캘러스, 인삼뿌리추출물, 아데노신, 가수분해 단백질 4종",
     "usage": "아침엔 메이크업 전, 저녁엔 취침 약 30분 전. 리페어 크림으로 마무리",
-    "rules": "물처럼 가볍고 끈적이지 않는 사용감을 강조",
+    "rules": "물처럼 가볍고 끈적이지 않는 사용감을 강조\n용량은 30 mL (50 mL 아님)",
     "registration": {
       "ean": "8800284710112",
       "mocra": "53-032142-560014",
       "cpnp": "5689346",
       "paoMonths": 24
     },
-    "inci": "Water (Aqua), Dipropylene Glycol, Butylene Glycol, Glycerin, 1,2-Hexanediol, Niacinamide, Diethoxyethyl Succinate, Glyceryl Glucoside, Panthenol, Polyglyceryl-10 Laurate, Nicotinamide Mononucleotide, Arginine, Carbomer, Dipotassium Glycyrrhizate, Allantoin, Adenosine, Hydrogenated Lecithin, Sodium Polyacrylate, Disodium EDTA, Lactobacillus Ferment, Zingiber Officinale (Ginger) Root Extract, Allium Cepa (Onion) Bulb Extract, Arctium Lappa Root Extract, Platycodon Grandiflorum Root Extract, Panax Ginseng Root Extract, Sodium Hyaluronate, Collagen Extract, Camellia Sinensis Callus Culture Extract, Potassium Hyaluronate, Hydroxypropyltrimonium Hyaluronate, Hydrolyzed Sodium Hyaluronate, Hydrolyzed Hyaluronic Acid, Hyaluronic Acid, Pentylene Glycol, Daucus Carota Sativa (Carrot) Root Extract, Rubus Idaeus (Raspberry) Fruit Extract, Vaccinium Angustifolium (Blueberry) Fruit Extract, Fragaria Chiloensis (Strawberry) Fruit Extract, Rubus Fruticosus (Blackberry) Fruit Extract, Apium Graveolens (Celery) Extract, Sodium Hyaluronate Crosspolymer, Euterpe Oleracea Fruit Extract, Brassica Oleracea Capitata (Cabbage) Leaf Extract, Ethylhexylglycerin, Brassica Oleracea Italica (Broccoli) Extract, Sodium Acetylated Hyaluronate, Brassica Rapa (Turnip) Leaf Extract, Oryza Sativa (Rice) Extract, Solanum Lycopersicum (Tomato) Fruit/Leaf/Stem Extract, Hydrolyzed Collagen, Hydrolyzed Silk, Hydrolyzed Elastin, Hydrolyzed Keratin"
+    "inci": "Water (Aqua), Dipropylene Glycol, Butylene Glycol, Glycerin, 1,2-Hexanediol, Niacinamide, Diethoxyethyl Succinate, Glyceryl Glucoside, Panthenol, Polyglyceryl-10 Laurate, Nicotinamide Mononucleotide, Arginine, Carbomer, Dipotassium Glycyrrhizate, Allantoin, Adenosine, Hydrogenated Lecithin, Sodium Polyacrylate, Disodium EDTA, Lactobacillus Ferment, Zingiber Officinale (Ginger) Root Extract, Allium Cepa (Onion) Bulb Extract, Arctium Lappa Root Extract, Platycodon Grandiflorum Root Extract, Panax Ginseng Root Extract, Sodium Hyaluronate, Collagen Extract, Camellia Sinensis Callus Culture Extract, Potassium Hyaluronate, Hydroxypropyltrimonium Hyaluronate, Hydrolyzed Sodium Hyaluronate, Hydrolyzed Hyaluronic Acid, Hyaluronic Acid, Pentylene Glycol, Daucus Carota Sativa (Carrot) Root Extract, Rubus Idaeus (Raspberry) Fruit Extract, Vaccinium Angustifolium (Blueberry) Fruit Extract, Fragaria Chiloensis (Strawberry) Fruit Extract, Rubus Fruticosus (Blackberry) Fruit Extract, Apium Graveolens (Celery) Extract, Sodium Hyaluronate Crosspolymer, Euterpe Oleracea Fruit Extract, Brassica Oleracea Capitata (Cabbage) Leaf Extract, Ethylhexylglycerin, Brassica Oleracea Italica (Broccoli) Extract, Sodium Acetylated Hyaluronate, Brassica Rapa (Turnip) Leaf Extract, Oryza Sativa (Rice) Extract, Solanum Lycopersicum (Tomato) Fruit/Leaf/Stem Extract, Hydrolyzed Collagen, Hydrolyzed Silk, Hydrolyzed Elastin, Hydrolyzed Keratin",
+    "look": "",
+    "tests": "한국피부과학연구소 24시간 첩포(비자극)"
   },
   {
     "code": "GTCR",
@@ -91,21 +100,24 @@
       "EU": true
     },
     "names": {
-      "KR": "그린티 캘러스 리페어 크림",
+      "KR": "그린티 캘러스 리페어크림",
       "EN": "Green Tea Callus Repair Cream",
       "JP": "ダムティックスGTCRクリーム",
-      "FR": "Green Tea Callus Repair Cream"
+      "FR": "Green Tea Callus Repair Cream",
+      "JPkind": "クリーム"
     },
     "keyIngredients": "4종 지질 복합체(세라마이드NP·콜레스테롤·피토스핑고신·베헨산), 판테놀, 그린티 캘러스",
     "usage": "루틴 마지막 단계. 뚜껑 팔레트에서 세럼과 1:1로 섞어 사용 가능",
-    "rules": "\"Repair\"는 제품명일 뿐, \"피부를 회복시킨다\" 같은 효능 표현 금지",
+    "rules": "\"Repair\"는 제품명일 뿐, \"피부를 회복시킨다\" 같은 효능 표현 금지\n한국어 표기는 \"리페어크림\"(붙여 씀)",
     "registration": {
       "ean": "8800284710105",
       "mocra": "53-393929-164577",
       "cpnp": "5649589",
       "paoMonths": 24
     },
-    "inci": "Aqua, Hydrogenated Polydecene, Glycereth-26, Hydrogenated Coconut Oil, Octyldodecanol, Cetearyl Alcohol, 1,2-Hexanediol, Glyceryl Stearate, Niacinamide, Cetearyl Olivate, Sorbitan Olivate, Panthenol, Glycerin, Cetyl Alcohol, Propanediol, Caprylic/Capric Triglyceride, Methylpropanediol, Sodium Hyaluronate, Hyaluronic Acid, Hydrolyzed Hyaluronic Acid, Pentylene Glycol, Xanthan Gum, Hydrolyzed Collagen, Hydrogenated Lecithin, Melia Azadirachta Leaf Extract, Polyglyceryl-10 Oleate, Adenosine, Polyglutamic Acid, Glycyrrhiza Glabra Root Extract, Lecithin, Camellia Sinensis Callus Culture Extract, Disodium EDTA, Melia Azadirachta Flower Extract, Alpha-Arbutin, Citrus Unshiu Peel Extract, Camellia Sinensis Leaf Extract, Centella Asiatica Extract, Glyceryl Stearate Citrate, Polygonum Cuspidatum Root Extract, Ethylhexylglycerin, Ceramide NP, Chamomilla Recutita Flower Extract, Rosmarinus Officinalis Leaf Extract, Scutellaria Baicalensis Root Extract, Behenic Acid, Cholesterol, Phytosphingosine"
+    "inci": "Aqua, Hydrogenated Polydecene, Glycereth-26, Hydrogenated Coconut Oil, Octyldodecanol, Cetearyl Alcohol, 1,2-Hexanediol, Glyceryl Stearate, Niacinamide, Cetearyl Olivate, Sorbitan Olivate, Panthenol, Glycerin, Cetyl Alcohol, Propanediol, Caprylic/Capric Triglyceride, Methylpropanediol, Sodium Hyaluronate, Hyaluronic Acid, Hydrolyzed Hyaluronic Acid, Pentylene Glycol, Xanthan Gum, Hydrolyzed Collagen, Hydrogenated Lecithin, Melia Azadirachta Leaf Extract, Polyglyceryl-10 Oleate, Adenosine, Polyglutamic Acid, Glycyrrhiza Glabra Root Extract, Lecithin, Camellia Sinensis Callus Culture Extract, Disodium EDTA, Melia Azadirachta Flower Extract, Alpha-Arbutin, Citrus Unshiu Peel Extract, Camellia Sinensis Leaf Extract, Centella Asiatica Extract, Glyceryl Stearate Citrate, Polygonum Cuspidatum Root Extract, Ethylhexylglycerin, Ceramide NP, Chamomilla Recutita Flower Extract, Rosmarinus Officinalis Leaf Extract, Scutellaria Baicalensis Root Extract, Behenic Acid, Cholesterol, Phytosphingosine",
+    "look": "",
+    "tests": "Dermatest (excellent)"
   },
   {
     "code": "P7XL",
@@ -121,7 +133,8 @@
       "KR": "펩타이드 7X 리프팅 크림",
       "EN": "Peptide 7X Lifting Cream",
       "JP": "ダムティックスP7XLクリーム",
-      "FR": "Peptide 7X Lifting Cream"
+      "FR": "Peptide 7X Lifting Cream",
+      "JPkind": "クリーム"
     },
     "keyIngredients": "펩타이드 7종, 히알루론산 8종, 나이아신아마이드, 세라마이드NP",
     "usage": "크림을 펴 바른 뒤 캡의 기기로 턱선과 볼을 아래에서 위로, 안에서 밖으로 밀기",
@@ -132,7 +145,9 @@
       "cpnp": "5706527",
       "paoMonths": 24
     },
-    "inci": "Aqua, Ethylhexyl Palmitate, Butylene Glycol, Glycerin, Propanediol, 1,2-Hexanediol, Niacinamide, Cetearyl Alcohol, Vinyl Dimethicone, Polyglyceryl-3 Methylglucose Distearate, Cetearyl Olivate, Ammonium Acryloyldimethyltaurate/VP Copolymer, Sorbitan Olivate, Octyldodecanol, Polyacrylate-13, Carbomer, Arginine, Sodium Polyacrylate, Hydrogenated Polyisobutene, Sodium Hyaluronate, Ethylhexylglycerin, Betaine, Hydrogenated Lecithin, Adenosine, Disodium EDTA, Polyglyceryl-10 Laurate, Tocopherol, Sorbitan Isostearate, Ceramide NP, Caprylyl Glycol, Lactobacillus Ferment Lysate, Taraxacum Officinale (Dandelion) Leaf Extract, Camellia Sinensis Callus Culture Extract, Potassium Hyaluronate, Hydroxypropyltrimonium Hyaluronate, Hydrolyzed Sodium Hyaluronate, Hydrolyzed Hyaluronic Acid, Hydrolyzed Collagen, Hyaluronic Acid, Pentylene Glycol, Sodium Hyaluronate Crosspolymer, Tripeptide-1, Sodium Acetylated Hyaluronate, Palmitoyl Tripeptide-1, Palmitoyl Pentapeptide-4, Copper Tripeptide-1, Acetyl Hexapeptide-8, Anemarrhena Asphodeloides Root Extract, Hexapeptide-9, Nonapeptide-1"
+    "inci": "Aqua, Ethylhexyl Palmitate, Butylene Glycol, Glycerin, Propanediol, 1,2-Hexanediol, Niacinamide, Cetearyl Alcohol, Vinyl Dimethicone, Polyglyceryl-3 Methylglucose Distearate, Cetearyl Olivate, Ammonium Acryloyldimethyltaurate/VP Copolymer, Sorbitan Olivate, Octyldodecanol, Polyacrylate-13, Carbomer, Arginine, Sodium Polyacrylate, Hydrogenated Polyisobutene, Sodium Hyaluronate, Ethylhexylglycerin, Betaine, Hydrogenated Lecithin, Adenosine, Disodium EDTA, Polyglyceryl-10 Laurate, Tocopherol, Sorbitan Isostearate, Ceramide NP, Caprylyl Glycol, Lactobacillus Ferment Lysate, Taraxacum Officinale (Dandelion) Leaf Extract, Camellia Sinensis Callus Culture Extract, Potassium Hyaluronate, Hydroxypropyltrimonium Hyaluronate, Hydrolyzed Sodium Hyaluronate, Hydrolyzed Hyaluronic Acid, Hydrolyzed Collagen, Hyaluronic Acid, Pentylene Glycol, Sodium Hyaluronate Crosspolymer, Tripeptide-1, Sodium Acetylated Hyaluronate, Palmitoyl Tripeptide-1, Palmitoyl Pentapeptide-4, Copper Tripeptide-1, Acetyl Hexapeptide-8, Anemarrhena Asphodeloides Root Extract, Hexapeptide-9, Nonapeptide-1",
+    "look": "디바이스 일체형(레드 LED 640nm · 미세전류), 분리형 어플리케이터 헤드가 있음(AI 렌더에서 헤드가 빠지는 경향 — 실물과 대조), CR2032 교체형",
+    "tests": "피부 시험 없음"
   },
   {
     "code": "VLE",
@@ -145,21 +160,24 @@
       "EU": true
     },
     "names": {
-      "KR": "볼륨 리프트 아이크림",
+      "KR": "볼륨-리프트 아이크림",
       "EN": "Volume-Lift Eye Cream",
       "JP": "ダムティックスVLアイクリーム",
-      "FR": "Volume-Lift Eye Cream"
+      "FR": "Volume-Lift Eye Cream",
+      "JPkind": "アイクリーム"
     },
     "keyIngredients": "볼루필린, 아세틸헥사펩타이드-8, 콜라겐 7종, 나이아신아마이드",
     "usage": "눈가 뼈 라인에 소량. 어플리케이터로 눈머리→눈꼬리, 한쪽 30~60초. 저녁 사용",
-    "rules": "기기는 EMS만 있음 (LED·진동 없음). USB-C 충전식\nEMS 효과 주장 금지\n\"실리콘 프리\" 표기 금지",
+    "rules": "기기는 EMS만 있음 (LED·진동 없음). USB-C 충전식\nEMS 효과 주장 금지\n\"실리콘 프리\" 표기 금지\n레드 LED·진동은 언급하지 않음(진동이 \"없다\"고도 쓰지 않음). EMS 80Hz + USB-C 충전 + 리필만",
     "registration": {
       "ean": "8800284710198",
       "mocra": "53-669243-889103",
       "cpnp": "5931614",
       "paoMonths": 12
     },
-    "inci": "Aqua, Cetyl Ethylhexanoate, Cetyl EG/PPG-10/1 Dimethicone, Butylene Glycol, Dimethicone, Glycerin, Squalane, 1,2-Hexanediol, Niacinamide, Sorbitan Olivate, Synthetic Beeswax, Caprylyl Glycol, Panthenol, Tocopheryl Acetate, Hydrogenated Polyisobutene, Sodium Chloride, Citric Acid, Adenosine, Acrylates/Ammonium Methacrylate Copolymer, Polycaprolactone, Polyglyceryl-10 Laurate, Pueraria Lobata Extract, Hydrolyzed Collagen, Acetyl Hexapeptide-8, Anemarrhena Asphodeloides Root Extract, Disodium EDTA, Tocopherol, Collagen, Collagen Amino Acids, Collagen Extract, Sodium Soy Hydrolyzed Collagen, Soluble Collagen, Zinc Hydrolyzed Collagen"
+    "inci": "Aqua, Cetyl Ethylhexanoate, Cetyl EG/PPG-10/1 Dimethicone, Butylene Glycol, Dimethicone, Glycerin, Squalane, 1,2-Hexanediol, Niacinamide, Sorbitan Olivate, Synthetic Beeswax, Caprylyl Glycol, Panthenol, Tocopheryl Acetate, Hydrogenated Polyisobutene, Sodium Chloride, Citric Acid, Adenosine, Acrylates/Ammonium Methacrylate Copolymer, Polycaprolactone, Polyglyceryl-10 Laurate, Pueraria Lobata Extract, Hydrolyzed Collagen, Acetyl Hexapeptide-8, Anemarrhena Asphodeloides Root Extract, Disodium EDTA, Tocopherol, Collagen, Collagen Amino Acids, Collagen Extract, Sodium Soy Hydrolyzed Collagen, Soluble Collagen, Zinc Hydrolyzed Collagen",
+    "look": "튜브는 끝에서 끝까지 전체 미러 크롬(검정·고무·무광 부분 없음, 어두워 보이는 건 반사), 세로 DAMTIX 레터링",
+    "tests": "Dermatest (excellent)"
   },
   {
     "code": "VLER",
@@ -172,10 +190,11 @@
       "EU": true
     },
     "names": {
-      "KR": "볼륨 리프트 아이크림 리필",
+      "KR": "볼륨-리프트 아이크림 리필",
       "EN": "Volume-Lift Eye Cream Refill",
       "JP": "ダムティックスVLアイクリーム",
-      "FR": "Volume-Lift Eye Cream Refill"
+      "FR": "Volume-Lift Eye Cream Refill",
+      "JPkind": "アイクリーム"
     },
     "keyIngredients": "아이크림과 같은 크림",
     "usage": "기존 어플리케이터에 크림만 교체",
@@ -186,7 +205,9 @@
       "cpnp": "5931614",
       "paoMonths": 12
     },
-    "inci": "Aqua, Cetyl Ethylhexanoate, Cetyl EG/PPG-10/1 Dimethicone, Butylene Glycol, Dimethicone, Glycerin, Squalane, 1,2-Hexanediol, Niacinamide, Sorbitan Olivate, Synthetic Beeswax, Caprylyl Glycol, Panthenol, Tocopheryl Acetate, Hydrogenated Polyisobutene, Sodium Chloride, Citric Acid, Adenosine, Acrylates/Ammonium Methacrylate Copolymer, Polycaprolactone, Polyglyceryl-10 Laurate, Pueraria Lobata Extract, Hydrolyzed Collagen, Acetyl Hexapeptide-8, Anemarrhena Asphodeloides Root Extract, Disodium EDTA, Tocopherol, Collagen, Collagen Amino Acids, Collagen Extract, Sodium Soy Hydrolyzed Collagen, Soluble Collagen, Zinc Hydrolyzed Collagen"
+    "inci": "Aqua, Cetyl Ethylhexanoate, Cetyl EG/PPG-10/1 Dimethicone, Butylene Glycol, Dimethicone, Glycerin, Squalane, 1,2-Hexanediol, Niacinamide, Sorbitan Olivate, Synthetic Beeswax, Caprylyl Glycol, Panthenol, Tocopheryl Acetate, Hydrogenated Polyisobutene, Sodium Chloride, Citric Acid, Adenosine, Acrylates/Ammonium Methacrylate Copolymer, Polycaprolactone, Polyglyceryl-10 Laurate, Pueraria Lobata Extract, Hydrolyzed Collagen, Acetyl Hexapeptide-8, Anemarrhena Asphodeloides Root Extract, Disodium EDTA, Tocopherol, Collagen, Collagen Amino Acids, Collagen Extract, Sodium Soy Hydrolyzed Collagen, Soluble Collagen, Zinc Hydrolyzed Collagen",
+    "look": "",
+    "tests": "Dermatest (excellent)"
   },
   {
     "code": "HGB",
@@ -202,7 +223,8 @@
       "KR": "히알루로닉 글로우 버블 에센스 토너",
       "EN": "Hyaluronic Glow Bubble Essence Toner",
       "JP": "ダムティックスHGBエッセンストナー",
-      "FR": "Hyaluronic Glow Bubble Essence Toner"
+      "FR": "Hyaluronic Glow Bubble Essence Toner",
+      "JPkind": "化粧水"
     },
     "keyIngredients": "히알루론산 8종, 나이아신아마이드, 베타글루칸, 병풀, 판테놀",
     "usage": "펌프 1~2회, 얼굴과 목에 바르고 가볍게 두드려 거품을 흡수",
@@ -213,6 +235,8 @@
       "cpnp": "5932550",
       "paoMonths": 12
     },
-    "inci": "Aqua, Dipropylene Glycol, Propanediol, Glyceryl Glucoside, 1,2-Hexanediol, Glycereth-26, Niacinamide, Hydroxyethyl Urea, Polyglyceryl-10 Laurate, Glycerin, Panthenol, Polyglyceryl-4 Laurate, Glycereth-25 PCA Isostearate, Sodium Hyaluronate, Glucose, Adenosine, Centella Asiatica Extract, Citric Acid, Passiflora Incarnata Extract, Eclipta Prostrata Extract, Houttuynia Cordata Extract, Phyllostachys Nigra Leaf Extract, Polygonum Multiflorum Root Extract, Urtica Dioica Extract, Butylene Glycol, Beta-Glucan, Acrylates/Ammonium Methacrylate Copolymer, Polycaprolactone, Pueraria Lobata Root Extract, Hyaluronic Acid, Hydrolyzed Hyaluronic Acid, Hydrolyzed Sodium Hyaluronate, Hydrolyzed Glycosaminoglycans, Disodium EDTA, Dimethylsilanol Hyaluronate, Hydroxypropyltrimonium Hyaluronate, Sodium Acetylated Hyaluronate, Sodium Hyaluronate Crosspolymer"
+    "inci": "Aqua, Dipropylene Glycol, Propanediol, Glyceryl Glucoside, 1,2-Hexanediol, Glycereth-26, Niacinamide, Hydroxyethyl Urea, Polyglyceryl-10 Laurate, Glycerin, Panthenol, Polyglyceryl-4 Laurate, Glycereth-25 PCA Isostearate, Sodium Hyaluronate, Glucose, Adenosine, Centella Asiatica Extract, Citric Acid, Passiflora Incarnata Extract, Eclipta Prostrata Extract, Houttuynia Cordata Extract, Phyllostachys Nigra Leaf Extract, Polygonum Multiflorum Root Extract, Urtica Dioica Extract, Butylene Glycol, Beta-Glucan, Acrylates/Ammonium Methacrylate Copolymer, Polycaprolactone, Pueraria Lobata Root Extract, Hyaluronic Acid, Hydrolyzed Hyaluronic Acid, Hydrolyzed Sodium Hyaluronate, Hydrolyzed Glycosaminoglycans, Disodium EDTA, Dimethylsilanol Hyaluronate, Hydroxypropyltrimonium Hyaluronate, Sodium Acetylated Hyaluronate, Sodium Hyaluronate Crosspolymer",
+    "look": "",
+    "tests": "피부 시험 없음"
   }
 ]

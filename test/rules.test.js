@@ -20,12 +20,14 @@ test('금지 표현을 단어 단위로 찾는다', () => {
   assert.equal(R.checkText({ text: 'A healthy-looking glow.', account: 'GLOBAL' }).ok, true);
 });
 
-test('일본어 금지 표현과 판매명 누락을 찾는다', () => {
+test('일본어 금지 표현을 찾고, 판매명은 전성분 페이지에만 쓰도록 알린다', () => {
   const r = R.checkText({ text: '肌を再生するセラム', account: 'JP', product: 'GTCP' });
   assert.equal(r.ok, false);
   assert.ok(r.issues.some(i => i.word === '再生'));
-  assert.ok(r.issues.some(i => i.type === 'jp_name_missing' && i.level === 'caution'));
-  const good = R.checkText({ text: 'ダムティックスGTCPセラムが、肌を整えます。', account: 'JP', product: 'GTCP' });
+  const sales = R.checkText({ text: 'ダムティックスGTCPセラムが、肌を整えます。', account: 'JP', product: 'GTCP' });
+  assert.equal(sales.ok, true);
+  assert.ok(sales.issues.some(i => i.type === 'jp_sales_name' && i.level === 'caution'));
+  const good = R.checkText({ text: 'Green Tea Callus PDRN Serum 美容液で、肌を整えます。', account: 'JP', product: 'GTCP' });
   assert.equal(good.ok, true);
   assert.equal(good.issues.length, 0);
 });

@@ -254,7 +254,7 @@ function subPreview(draft) {
 function subPrevHtml(images, loading) {
   if (!images) return '<p class="empty">미리보기를 그리는 중…</p>';
   return `<div class="subgrid${loading ? ' loading' : ''}">${SUB_ACC.map(([a, l]) => `<div><div class="small" style="font-weight:600;margin-bottom:6px">${l}</div><div class="pair">${images.filter(x => x.account === a).map(x => `<figure><img src="${x.data}" alt="${l} ${x.bg === 'bright' ? '밝은' : '어두운'} 장면 미리보기"><figcaption class="small muted">${x.bg === 'bright' ? '밝은 장면' : '어두운 장면'} · ${x.color === 'black' ? '검정' : '흰'} 글씨</figcaption></figure>`).join('')}</div></div>`).join('')}</div>
-    <p class="small muted" style="margin:8px 0 0">어둡게 칠한 아래쪽은 인스타그램 버튼·설명이 덮는 곳이에요. 한국어는 지금 올리는 계정이 없어서 미리보기로만 보여요.</p>`;
+    <p class="small muted" style="margin:8px 0 0">어둡게 칠한 위·아래는 인스타그램 화면이 덮는 곳이에요(글자는 y 300~1480 안). 한국어는 지금 올리는 계정이 없어서 미리보기로만 보여요.</p>`;
 }
 async function loadSubPrev(draft, k) {
   try {
@@ -298,9 +298,10 @@ async function loadImages(code) {
 }
 
 function vBrand() {
-  const tabs = [['brand', '브랜드 전체'], ['sku', '제품별 (SKU)'], ['prop', `업데이트 제안${S.proposals.length ? ' ' + S.proposals.length : ''}`], ['hist', '변경 이력']];
+  const tabs = [['brand', '브랜드 전체'], ['work', '작업 규칙'], ['sku', '제품별 (SKU)'], ['prop', `업데이트 제안${S.proposals.length ? ' ' + S.proposals.length : ''}`], ['hist', '변경 이력']];
   let body = '';
-  if (ui.btab === 'brand') body = ['brand.core', 'brand.tone', 'brand.rules', 'brand.visual', 'brand.subtitle'].map(secView).join('');
+  if (ui.btab === 'brand') body = ['brand.core', 'brand.tone', 'brand.rules', 'brand.visual', 'brand.facts', 'brand.subtitle'].map(secView).join('');
+  if (ui.btab === 'work') body = `<p class="small muted" style="margin:0 0 4px">Claude가 작업할 때 읽는 규칙이에요. 이전 작업(인수인계서)에서 정해진 것을 정리했어요. 바꾸면 버전과 기록이 남고, Claude는 다음 작업부터 새 규칙을 따라요.</p>` + ['brand.work', 'brand.reels', 'brand.imagegen', 'brand.event', 'brand.web'].map(secView).join('');
   if (ui.btab === 'sku') {
     const p = prodBy(ui.sku) || S.products[0];
     const r = p.registration || {};

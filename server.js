@@ -14,12 +14,14 @@ import { VIDEO_STAGE, SUB_STATUS, requestStory, fixStory, setCutImage, approveSt
 import { listTemplates, saveTemplate, deleteTemplate, findBrowser } from './lib/motion.js';
 import { finalsConfig, setFinals, driveCandidates } from './lib/finalize.js';
 import { claudeQueue } from './lib/queue.js';
+import { applyHandover } from './lib/handover.js';
 import { listFonts, addFont } from './lib/fonts.js';
 import { stylePreview, subtitleStyle, lineLimit, COLOR_MODES, SAFE_BOTTOM } from './lib/subtitles.js';
 import { WORK_DIR, REF_DIR } from './lib/files.js';
 import { TYPES as WORK_TYPES, STORES, CAPTION_STATUS, listWorks, createWork, updateWork, deleteWork, requestCaption, fixCaption, confirmCaption, reopenCaption } from './lib/works.js';
 
 ensureData();
+applyHandover();
 migrateConfig();
 finalsConfig();
 const PUBLIC_DIR = path.join(APP_DIR, 'public');
