@@ -217,5 +217,6 @@ server.on('error', e => {
 server.listen(port, '0.0.0.0', () => {
   console.log(`\n  contents controller 실행 중\n\n  Mac:  http://localhost:${port}`);
   for (const u of lanUrls(port)) console.log(`  폰:   ${u}  (같은 Wi-Fi, 접속 코드 ${config.accessCode})`);
-  console.log(`\n  이 창을 닫으면 프로그램이 꺼져요.\n`);
+  // 자동 실행(launchd)으로 켜졌으면 창이 없으니 다른 안내를 남긴다
+  console.log(process.env.XPC_SERVICE_NAME === 'com.damtix.contents-controller' ? `\n  자동 실행 중이에요. Mac을 켜면 알아서 켜져요.\n` : `\n  이 창을 닫으면 프로그램이 꺼져요.\n`);
 });
