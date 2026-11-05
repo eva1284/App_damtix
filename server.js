@@ -9,8 +9,8 @@ import { DEFS, ACCOUNTS, applyChange, rollback, acceptProposal, rejectProposal, 
 import { IMAGE_EXT, migrateConfig, productImages, folderMap, listTopFolders, setFolders } from './lib/images.js';
 import { spawn } from 'node:child_process';
 import { listRefs, getRef, refPath, addFileRef, addUrlRef, updateRef, link as linkRef, unlink as unlinkRef, deleteRef, dropWorkLinks } from './lib/refs.js';
-import { IMAGE_STAGE, requestDrafts, fixDrafts, pickDraft, savePins, fixResults, finalConfirm } from './lib/imagework.js';
-import { VIDEO_STAGE, SUB_STATUS, requestStory, fixStory, setCutImage, approveStory, setMethod, uploadVideo, saveNotes, fixVideo, approveVideo, fixSubtitles, confirmSubtitles, finalConfirmVideo, subtitleStill, pumpRenders } from './lib/videowork.js';
+import { IMAGE_STAGE, requestDrafts, fixDrafts, pickDraft, pickDrafts, savePins, fixResults, finalConfirm } from './lib/imagework.js';
+import { VIDEO_STAGE, SUB_STATUS, requestStory, fixStory, setCutImage, approveStory, setMethod, uploadVideo, saveNotes, fixVideo, approveVideo, fixSubtitles, confirmSubtitles, finalConfirmVideo, subtitleStill, pumpRenders, createCutImages } from './lib/videowork.js';
 import { listTemplates, saveTemplate, deleteTemplate, findBrowser } from './lib/motion.js';
 import { finalsConfig, setFinals, driveCandidates } from './lib/finalize.js';
 import { claudeQueue } from './lib/queue.js';
@@ -163,17 +163,17 @@ async function route(req, res) {
     return send(res, 200, { work: w, state: state(req) });
   }
   // 이미지 제작 단계
-  m = /^\/api\/works\/([A-Za-z]+-\d+)\/image-(request|fix-drafts|pick|pins|fix|final)$/.exec(p);
+  m = /^\/api\/works\/([A-Za-z]+-\d+)\/image-(request|fix-drafts|pick|picks|pins|fix|final)$/.exec(p);
   if (m && req.method === 'POST') {
     const b = await readBody(req), id = m[1], by = who(req);
-    const w = await ({ request: () => requestDrafts(id, b.note, by), 'fix-drafts': () => fixDrafts(id, b.note, by), pick: () => pickDraft(id, b.draftId, b.note, by), pins: () => savePins(id, b.resultId, b.pins, by), fix: () => fixResults(id, b.note, by), final: () => finalConfirm(id, b.resultIds, b.upscale || 'none', by) }[m[2]])();
+    const w = await ({ request: () => requestDrafts(id, b.note, by), 'fix-drafts': () => fixDrafts(id, b.note, by, b.cuts), pick: () => pickDraft(id, b.draftId, b.note, by), picks: () => pickDrafts(id, b.picks, b.notes, b.note, by), pins: () => savePins(id, b.resultId, b.pins, by), fix: () => fixResults(id, b.note, by), final: () => finalConfirm(id, b.resultIds, b.upscale || 'none', by) }[m[2]])();
     return send(res, 200, { work: w, state: state(req) });
   }
   // 영상 제작 단계
-  m = /^\/api\/works\/([A-Za-z]+-\d+)\/video-(request|fix-story|cut-image|approve-story|method|notes|fix|approve|subs-fix|subs-confirm|final)$/.exec(p);
+  m = /^\/api\/works\/([A-Za-z]+-\d+)\/video-(request|fix-story|cut-image|cut-images|approve-story|method|notes|fix|approve|subs-fix|subs-confirm|final)$/.exec(p);
   if (m && req.method === 'POST') {
     const b = await readBody(req), id = m[1], by = who(req);
-    const w = await ({ request: () => requestStory(id, b.note, by), 'fix-story': () => fixStory(id, b.note, by), 'cut-image': () => setCutImage(id, b.cutId, b.imageId, by), 'approve-story': () => approveStory(id, b.method, by), method: () => setMethod(id, b.method, by), notes: () => saveNotes(id, b.notes, by), fix: () => fixVideo(id, b.note, by), approve: () => approveVideo(id, b.versions, b.subtitles !== false, by), 'subs-fix': () => fixSubtitles(id, b.note, by), 'subs-confirm': () => confirmSubtitles(id, by), final: () => finalConfirmVideo(id, by, { subColor: b.subColor }) }[m[2]])();
+    const w = await ({ request: () => requestStory(id, b.note, by), 'fix-story': () => fixStory(id, b.note, by), 'cut-image': () => setCutImage(id, b.cutId, b.imageId, by), 'cut-images': () => createCutImages(id, b.cutIds, by), 'approve-story': () => approveStory(id, b.method, by), method: () => setMethod(id, b.method, by), notes: () => saveNotes(id, b.notes, by), fix: () => fixVideo(id, b.note, by), approve: () => approveVideo(id, b.versions, b.subtitles !== false, by), 'subs-fix': () => fixSubtitles(id, b.note, by), 'subs-confirm': () => confirmSubtitles(id, by), final: () => finalConfirmVideo(id, by, { subColor: b.subColor }) }[m[2]])();
     return send(res, 200, { work: w, state: state(req) });
   }
   m = /^\/api\/works\/([A-Za-z]+-\d+)\/video-upload$/.exec(p);

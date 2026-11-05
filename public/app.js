@@ -398,6 +398,14 @@ async function addUrl(url, work) {
 const workFile = (w, f) => `/work-file?id=${w.id}&f=${encodeURIComponent(f)}`;
 const fmtSize = b => b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`;
 function pinsOf(r) { return ui.pins[r.id] || r.pins || []; }
+const imgCuts = im => (im.cuts?.length ? im.cuts : [{ id: 'C1', title: '', desc: '' }]);
+// 화면에서 고른 시안 (아직 저장 전) + 저장된 선택. 처음에는 컷마다 첫 시안.
+function draftPicks(im) {
+  const saved = typeof im.pick === 'string' ? { [im.drafts.find(d => d.id === im.pick)?.cut || 'C1']: im.pick } : (im.pick || {});
+  const out = {};
+  for (const c of imgCuts(im)) out[c.id] = ui.dPicks?.[c.id] || saved[c.id] || (imgCuts(im).length === 1 ? im.drafts.find(d => (d.cut || 'C1') === c.id)?.id : undefined);
+  return out;
+}
 function imagePanel(w) {
   const im = w.image || { stage: 'none', drafts: [], results: [] };
   const label = S.imageStage[im.stage];
@@ -409,23 +417,29 @@ function imagePanel(w) {
     const fix = im.stage === 'upscale' ? null : im.fixes?.[0];
     body = `<div class="status"><span class="dot"></span><div class="small">${esc(label)}.${im.stage.startsWith('make') || im.stage === 'upscale' ? ' Higgsfield를 쓰기 전에 Claude가 예상 크레딧을 먼저 알려 드려요.' : ''}${im.stage === 'upscale' ? ` 업스케일이 끝나면 바로 최종 저장까지 진행돼요. (${im.upscale.ids.join(', ')})` : ''}${fix && im.stage.endsWith('fix') ? `<div class="muted" style="margin-top:4px">수정 요청: ${esc(fix.note || '')}${fix.pins?.length ? ` (핀 ${fix.pins.reduce((a, x) => a + x.pins.length, 0)}개)` : ''}</div>` : ''}</div></div>${cmdBox()}`;
   } else if (im.stage === 'draft_review') {
-    const pick = ui.draftPick || im.drafts[0]?.id;
-    body = `<p class="small muted" style="margin:0 0 12px">하나를 고르고, 생성할 때 바랄 점을 적어요. 마음에 드는 게 없으면 수정 요청을 보내요.</p>
-      <div class="drafts">${im.drafts.map(d => `<button class="draft" data-draft="${d.id}" aria-pressed="${pick === d.id}"><div class="dn"><h3>${esc(d.title)}</h3>${pick === d.id ? '<span class="chip st-done">선택</span>' : ''}</div><img src="${workFile(w, d.file)}" alt="${esc(d.title)}" style="width:100%;border-radius:8px;background:#fff"><span class="small muted">${esc(d.note)}</span></button>`).join('')}</div>
-      <label class="small" style="display:block;margin-top:16px">메모 (생성할 때 Claude가 반영)<textarea id="pick-note" placeholder="예: 빛은 더 부드럽게, 배경은 연한 회색"></textarea></label>
-      ${ui.imgFixOpen ? `<label class="small" style="display:block;margin-top:12px">시안을 어떻게 고칠까요?<textarea id="draftfix-note" placeholder="예: 제품을 더 크게, 문구 자리를 위로"></textarea></label><div class="row" style="margin-top:12px"><button class="btn" data-img="fixcancel">취소</button><span class="spacer"></span><button class="btn primary" data-img="fixdrafts">시안 수정 요청</button></div>`
-        : `<div class="row" style="margin-top:12px"><button class="btn" data-img="fixopen">시안 수정 요청</button><span class="spacer"></span><button class="btn primary" data-img="pick">이 시안으로 이미지 만들기 맡기기</button></div>`}`;
+    const cuts = imgCuts(im), multi = cuts.length > 1, picks = draftPicks(im);
+    const cutBlock = c => { const ds = im.drafts.filter(d => (d.cut || 'C1') === c.id); return `${multi ? `<div class="cuth"><b class="small">${esc(c.id)}${c.title ? ` · ${esc(c.title.replace(/^C\d+ · /, ''))}` : ''}</b>${picks[c.id] ? '<span class="chip st-done">고름</span>' : '<span class="chip st-warn">고르기 전</span>'}</div>${c.desc ? `<p class="small muted" style="margin:0 0 8px">${esc(c.desc)}</p>` : ''}` : ''}
+      <div class="drafts">${ds.map(d => `<button class="draft" data-draft="${d.id}" data-dcut="${d.cut || 'C1'}" aria-pressed="${picks[c.id] === d.id}"><div class="dn"><h3>${esc(d.title)}</h3>${picks[c.id] === d.id ? '<span class="chip st-done">선택</span>' : ''}</div><img src="${workFile(w, d.file)}" alt="${esc(d.title)}" style="width:100%;border-radius:8px;background:#fff"><span class="small muted">${esc(d.note)}</span></button>`).join('')}</div>
+      ${multi ? `<input type="text" data-pnote="${c.id}" value="${esc(ui.pNotes?.[c.id] || '')}" placeholder="${c.id} 생성 메모 (선택)" style="width:100%;margin-top:8px">` : ''}`; };
+    const left = cuts.filter(c => !picks[c.id]).length;
+    body = `<p class="small muted" style="margin:0 0 12px">${multi ? `${cuts.length}컷이에요. 컷마다 구도를 하나씩 고르고, 생성할 때 바랄 점을 적어요.` : '하나를 고르고, 생성할 때 바랄 점을 적어요.'} 마음에 드는 게 없으면 수정 요청을 보내요.</p>
+      ${multi ? `<div class="cutlist">${cuts.map(c => `<section class="cutbox">${cutBlock(c)}</section>`).join('')}</div>` : cutBlock(cuts[0])}
+      <label class="small" style="display:block;margin-top:16px">${multi ? '전체 메모' : '메모'} (생성할 때 Claude가 반영)<textarea id="pick-note" placeholder="예: 빛은 더 부드럽게, 배경은 연한 회색${multi ? ', 모든 컷에서 같은 모델' : ''}"></textarea></label>
+      ${ui.imgFixOpen ? `<label class="small" style="display:block;margin-top:12px">시안을 어떻게 고칠까요?<textarea id="draftfix-note" placeholder="예: 제품을 더 크게, 문구 자리를 위로"></textarea></label>
+        ${multi ? `<div class="row" style="margin-top:8px;gap:4px 16px"><span class="small muted">다시 받을 컷 (안 고르면 전체)</span>${cuts.map(c => `<label class="small" style="display:flex;gap:6px;align-items:center;min-height:44px"><input type="checkbox" data-fixcut="${c.id}" ${ui.fixCuts?.has(c.id) ? 'checked' : ''}> ${c.id}</label>`).join('')}</div>` : ''}
+        <div class="row" style="margin-top:12px"><button class="btn" data-img="fixcancel">취소</button><span class="spacer"></span><button class="btn primary" data-img="fixdrafts">시안 수정 요청</button></div>`
+        : `<div class="row" style="margin-top:12px"><button class="btn" data-img="fixopen">시안 수정 요청</button><span class="spacer"></span><button class="btn primary" data-img="pick" ${left ? 'disabled' : ''}>${multi ? (left ? `${left}컷 더 골라 주세요` : `고른 구도로 ${cuts.length}컷 이미지 만들기 맡기기`) : '이 시안으로 이미지 만들기 맡기기'}</button></div>`}`;
   } else if (im.stage === 'result_review' || im.stage === 'finalizing') {
     body = `${im.note ? `<p class="small" style="margin:0 0 12px">Claude: ${esc(im.note)}</p>` : ''}${im.error ? `<div class="warnbox" style="margin:0 0 12px">${esc(im.error)}</div>` : ''}
       <p class="small muted" style="margin:0 0 12px">이미지를 누르면 그 자리에 핀이 생겨요. 고칠 점을 핀마다 적고, 최종으로 쓸 이미지는 체크해요.</p>
-      <div class="grid g-2">${im.results.map(r => { const pins = pinsOf(r); return `<div><div class="board" data-board="${r.id}"><img src="${workFile(w, r.file)}" alt="${r.id}" style="display:block;width:100%">${pins.map((p, i) => `<span class="pin" style="left:${p.x}%;top:${p.y}%">${i + 1}</span>`).join('')}</div>
-        <label class="small" style="display:flex;gap:8px;align-items:center;min-height:44px"><input type="checkbox" data-final="${r.id}" ${ui.finalPick.has(r.id) ? 'checked' : ''}> ${r.id} 최종으로 쓰기</label>
-        <div class="notes">${pins.map((p, i) => `<div class="note"><span class="n">${i + 1}</span><input type="text" id="pin-${r.id}-${i}" data-pin="${r.id}" data-i="${i}" value="${esc(p.note)}" placeholder="고칠 점"><button class="btn sm" data-pindel="${r.id}" data-i="${i}" aria-label="${i + 1}번 핀 지우기">지우기</button></div>`).join('')}</div></div>`; }).join('')}</div>
+      ${imgCuts(im).map(c => { const rs = im.results.filter(r => (r.cut || 'C1') === c.id); return `${imgCuts(im).length > 1 ? `<div class="cuth" style="margin-top:16px"><b class="small">${esc(c.id)}${c.title ? ` · ${esc(c.title.replace(/^C\d+ · /, ''))}` : ''}</b><span class="small muted">${rs.length}장</span></div>` : ''}<div class="grid g-2">${rs.map(r => { const pins = pinsOf(r); return `<div><div class="board" data-board="${r.id}"><img src="${workFile(w, r.file)}" alt="${r.id}" style="display:block;width:100%">${pins.map((p, i) => `<span class="pin" style="left:${p.x}%;top:${p.y}%">${i + 1}</span>`).join('')}</div>
+        <label class="small" style="display:flex;gap:8px;align-items:center;min-height:44px"><input type="checkbox" data-final="${r.id}" ${ui.finalPick.has(r.id) ? 'checked' : ''}> ${r.id} 최종으로 쓰기<span class="spacer"></span>${r.width ? `<span class="${r.width < 1080 ? 'chip st-warn' : 'small muted'}">${r.width}×${r.height}${r.width < 1080 ? ' · 저해상도' : ''}</span>` : ''}</label>
+        <div class="notes">${pins.map((p, i) => `<div class="note"><span class="n">${i + 1}</span><input type="text" id="pin-${r.id}-${i}" data-pin="${r.id}" data-i="${i}" value="${esc(p.note)}" placeholder="고칠 점"><button class="btn sm" data-pindel="${r.id}" data-i="${i}" aria-label="${i + 1}번 핀 지우기">지우기</button></div>`).join('')}</div></div>`; }).join('') || '<p class="empty">이 컷의 이미지가 아직 없어요.</p>'}</div>`; }).join('')}
       <label class="small" style="display:block;margin-top:16px">전체 메모 (선택)<textarea id="imgfix-note" placeholder="예: 전체적으로 조금 더 밝게"></textarea></label>
       ${(() => { const small = im.results.filter(r => ui.finalPick.has(r.id) && r.width && r.width < 1080); return small.length ? `<div class="cautionbox"><b>${small.map(r => `${r.id} (${r.width}×${r.height})`).join(', ')}</b>는 가로 1080px보다 작아요. 최종 컨펌 때 어떻게 할까요?
         <div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;color:var(--ink)">${[['higgsfield', 'Higgsfield로 업스케일 (크레딧 사용, Claude 차례가 한 번 더 생겨요)'], ['local', '프로그램에서 확대 (무료, 조금 덜 선명)'], ['none', '원본 크기 그대로']].map(([k, t]) => `<label style="display:flex;gap:8px;align-items:center;min-height:36px"><input type="radio" name="upscale" value="${k}" data-upscale="${k}" ${ui.upscale === k ? 'checked' : ''}> ${t}</label>`).join('')}</div></div>` : ''; })()}
       <div class="row" style="margin-top:12px"><button class="btn" data-img="fixresults" ${im.stage === 'finalizing' ? 'disabled' : ''}>수정 요청 보내기</button><span class="spacer"></span><button class="btn primary" data-img="final" ${im.stage === 'finalizing' || ui.busy ? 'disabled' : ''}>${im.stage === 'finalizing' ? '처리 중…' : '최종 컨펌'}</button></div>
-      <p class="small muted" style="margin:8px 0 0">최종 컨펌하면 용량 최적화(JPG · 가로 1080px) → Mac 폴더 저장 → Google Drive 복사가 자동으로 진행돼요.</p>`;
+      <p class="small muted" style="margin:8px 0 0">최종 컨펌하면 인스타그램 크기(JPG · 가로 1080px · 고화질)로 맞춰 Mac 폴더에 저장하고 Google Drive에 복사해요.${imgCuts(im).length > 1 ? ' 파일 번호는 컷 순서(01, 02…)예요.' : ''}</p>`;
   } else if (im.stage === 'done') {
     const f = im.final;
     body = `<ol class="pipe">
@@ -493,12 +507,16 @@ function videoPanel(w) {
     body = `${v.motion?.error ? `<div class="warnbox" style="margin:0 0 12px">모션 그래픽 영상을 만들지 못했어요. Claude가 고칠 차례예요: ${esc(v.motion.error)}</div>` : ''}`+`<div class="status"><span class="dot"></span><div class="small">${esc(label)}.${v.stage.startsWith('make') ? ' Higgsfield 영상 생성은 Claude가 예상 크레딧을 먼저 알려 드려요.' : ''}${fix && v.stage.endsWith('fix') ? `<div class="muted" style="margin-top:4px">수정 요청: ${esc(fix.note || '')}${fix.notes?.length ? ` (타임라인 메모 ${fix.notes.length}개)` : ''}</div>` : ''}</div></div>${cmdBox()}
       ${v.stage.startsWith('make') ? '<div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn sm" data-vmethod="capcut">CapCut에서 직접 편집으로 바꾸기</button></div>' : ''}`;
   } else if (v.stage === 'story_review') {
-    const imgs = S.works.filter(x => x.type === 'image' && x.id !== w.id && (x.image?.results?.length || x.image?.final));
+    const imgs = S.works.filter(x => x.type === 'image' && x.id !== w.id && (x.image?.results?.length || x.image?.final || x.image?.cuts?.length > 1));
+    const imgOpts = imgs.flatMap(x => x.image?.cuts?.length > 1 ? x.image.cuts.map(c => [`${x.id}:${c.id}`, `${x.id} ${c.id} · ${x.title}`]) : [[x.id, `${x.id} · ${x.title}`]]);
+    const linked = [...new Set(v.story.cuts.map(c => (c.fromImage || '').split(':')[0]).filter(Boolean))];
     body = `<p class="small muted" style="margin:0 0 12px">${v.story.cuts.length}컷 · ${fmtT(v.story.cuts[v.story.cuts.length - 1].end)}${v.story.note ? ` · Claude: ${esc(v.story.note)}` : ''}</p>
+      <div class="cautionbox" style="margin:0 0 12px;background:var(--fill);color:var(--ink)">${linked.length ? `컷 이미지: ${linked.map(id => `<a href="#work-${id}">${id}</a>`).join(', ')}에서 컷마다 구도를 고르고 이미지를 만들어요. 다 만든 뒤 이 영상을 승인하면 Claude가 그 이미지로 컷을 만들어요.` : '컷마다 먼저 이미지를 뽑고 싶으면, 이 스토리보드로 <b>컷 이미지 작업</b>을 한 번에 만들 수 있어요. 컷마다 구도 시안을 고르고 이미지를 만든 뒤 영상에 써요.'}
+        ${linked.length ? '' : `<div class="row" style="margin-top:8px"><span class="spacer"></span><button class="btn sm primary" data-vid="cutimages">컷 이미지 한꺼번에 만들기 (${v.story.cuts.length}컷)</button></div>`}</div>
       <div class="cuts">${v.story.cuts.map((c, i) => `<div class="cut"><div class="cth">${c.sketch ? `<img src="${workFile(w, c.sketch)}" alt="${c.id} 스케치" style="width:100%;height:100%;object-fit:contain;background:#fff">` : `<div style="display:grid;place-items:center;height:100%;font-size:12px;color:var(--muted)">${c.id}</div>`}</div>
         <div style="min-width:0;display:flex;flex-direction:column;gap:4px"><div class="row"><b class="small">${c.id}</b><span class="code">${fmtT(c.start)}–${fmtT(c.end)}</span>${c.kind === 'motion' ? '<span class="chip st-plan">모션 그래픽</span>' : ''}${c.camera ? `<span class="small muted">${esc(c.camera)}</span>` : ''}</div>
           <div class="small">${esc(c.desc)}</div>${c.text ? `<div class="small">${esc(c.text)}</div><div class="small muted">${esc(c.back)}</div>` : ''}
-          <label class="small muted" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">이미지 작업으로 시작<select class="btn" data-cutimg="${c.id}" style="min-height:36px;flex:1;min-width:0"><option value="">없음</option>${imgs.map(x => `<option value="${x.id}" ${c.fromImage === x.id ? 'selected' : ''}>${x.id} · ${esc(x.title)}</option>`).join('')}</select></label>
+          <label class="small muted" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">이미지 작업으로 시작<select class="btn" data-cutimg="${c.id}" style="min-height:36px;flex:1;min-width:0"><option value="">없음</option>${imgOpts.map(([val, lab]) => `<option value="${val}" ${c.fromImage === val ? 'selected' : ''}>${esc(lab)}</option>`).join('')}</select></label>
           ${cutRefs(w, i)}</div></div>`).join('')}</div>
       ${ui.vFixOpen === 'story' ? `<label class="small" style="display:block;margin-top:16px">스토리보드를 어떻게 고칠까요?<textarea id="vstory-note" placeholder="예: C2를 더 짧게, 마지막에 제품 클로즈업 추가"></textarea></label><div class="row" style="margin-top:12px"><button class="btn" data-vid="fixcancel">취소</button><span class="spacer"></span><button class="btn primary" data-vid="fixstory">수정 요청 보내기</button></div>`
         : `<div class="row" style="margin-top:16px"><button class="btn" data-vid="fixopen-story">수정 요청</button><span class="spacer"></span><button class="btn" data-vapprove="capcut">승인 · CapCut에서 내가 편집</button><button class="btn primary" data-vapprove="claude">승인 · Claude가 편집</button></div>`}`;
@@ -614,7 +632,7 @@ function render() {
   renderNav(cur === 'work' ? 'calendar' : cur);
   $('#view').innerHTML = wm ? vWork(wm[1].toUpperCase()) : VIEWS[cur] ? VIEWS[cur]() : vSoon(cur);
 }
-window.addEventListener('hashchange', () => { $('.rail').classList.remove('open'); $('#menuBtn').setAttribute('aria-expanded', 'false'); ui.edit = null; ui.workEdit = null; ui.fixOpen = false; ui.confirmDelete = false; ui.refPick = null; ui.draftPick = null; ui.pins = {}; ui.finalPick = new Set(); ui.imgFixOpen = false; ui.refDelete = null; ui.vNotes = null; ui.vFixOpen = null; ui.versions = null; ui.subsOn = true; render(); scrollTo(0, 0); refresh(); });
+window.addEventListener('hashchange', () => { $('.rail').classList.remove('open'); $('#menuBtn').setAttribute('aria-expanded', 'false'); ui.edit = null; ui.workEdit = null; ui.fixOpen = false; ui.confirmDelete = false; ui.refPick = null; ui.draftPick = null; ui.dPicks = null; ui.pNotes = null; ui.fixCuts = null; ui.pins = {}; ui.finalPick = new Set(); ui.imgFixOpen = false; ui.refDelete = null; ui.vNotes = null; ui.vFixOpen = null; ui.versions = null; ui.subsOn = true; render(); scrollTo(0, 0); refresh(); });
 
 async function run(fn) { try { await fn(); } catch (e) { toast(e.message); } }
 function copy(text, done) {
@@ -667,7 +685,7 @@ document.addEventListener('click', e => {
   if (d.act === 'refdelask') { ui.refDelete = d.id; render(); return; }
   if (d.act === 'refdelno') { ui.refDelete = null; render(); return; }
   if (d.refdel) return run(async () => { S = (await api(`/api/refs/${d.refdel}/delete`, {})).state; ui.refDelete = null; render(); toast('레퍼런스를 지웠어요.'); });
-  if (d.draft) { ui.draftPick = d.draft; render(); return; }
+  if (d.draft) { ui.dPicks = { ...(ui.dPicks || {}), [d.dcut || 'C1']: d.draft }; render(); return; }
   if (d.pindel) { const w = cw(); const r = w.image.results.find(x => x.id === d.pindel); ui.pins[r.id] = pinsOf(r).filter((_, i) => i !== Number(d.i)); render(); savePinsSoon(w, r.id); return; }
   if (d.open) return run(async () => { await api('/api/open', { id: wid(), which: d.open === 'drive' ? 'drive' : 'mac', index: Number(d.index) || 0 }); });
   if (d.act === 'setdrive') return run(async () => { S = (await api('/api/config', { driveFolder: $('#drivesel').value })).state; render(); toast($('#drivesel')?.value ? 'Google Drive 폴더를 저장했어요.' : 'Google Drive 복사를 껐어요.'); });
@@ -679,8 +697,8 @@ document.addEventListener('click', e => {
     const calls = {
       request: ['image-request', { note: $('#img-note')?.value }, '구도 시안을 Claude에게 맡겼어요.'],
       again: ['image-request', { note: '' }, '새 버전 구도 시안을 Claude에게 맡겼어요.'],
-      fixdrafts: ['image-fix-drafts', { note: $('#draftfix-note')?.value }, '시안 수정 요청을 보냈어요.'],
-      pick: ['image-pick', { draftId: ui.draftPick || im.drafts?.[0]?.id, note: $('#pick-note')?.value }, '이 시안으로 이미지 만들기를 맡겼어요.'],
+      fixdrafts: ['image-fix-drafts', { note: $('#draftfix-note')?.value, cuts: [...(ui.fixCuts || [])] }, '시안 수정 요청을 보냈어요.'],
+      pick: ['image-picks', { picks: draftPicks(im), notes: ui.pNotes || {}, note: $('#pick-note')?.value }, imgCuts(im).length > 1 ? `${imgCuts(im).length}컷 이미지 만들기를 맡겼어요.` : '이 시안으로 이미지 만들기를 맡겼어요.'],
       fixresults: ['image-fix', { note: $('#imgfix-note')?.value }, '수정 요청을 Claude에게 보냈어요.'],
       final: ['image-final', { resultIds: [...ui.finalPick], upscale: (w.image.results.some(r => ui.finalPick.has(r.id) && r.width && r.width < 1080)) ? ui.upscale : 'none' }, ui.upscale === 'higgsfield' && w.image.results.some(r => ui.finalPick.has(r.id) && r.width && r.width < 1080) ? 'Higgsfield 업스케일을 Claude에게 맡겼어요. 끝나면 바로 저장돼요.' : '최종 처리를 마쳤어요.']
     };
@@ -690,7 +708,7 @@ document.addEventListener('click', e => {
       if (d.img === 'final') { ui.busy = true; render(); toast('최적화해서 저장하는 중…'); }
       if (d.img === 'fixresults' || d.img === 'final') { for (const [rid, pins] of Object.entries(ui.pins)) { clearTimeout(pinTimer[rid]); await api(`/api/works/${w.id}/image-pins`, { resultId: rid, pins }); } }
       try { S = (await api(`/api/works/${w.id}/${c[0]}`, c[1])).state; } finally { ui.busy = false; }
-      ui.imgFixOpen = false; ui.draftPick = null; ui.pins = {}; if (d.img === 'final') ui.finalPick = new Set(); render(); toast(c[2]);
+      ui.imgFixOpen = false; ui.draftPick = null; ui.dPicks = null; ui.pNotes = null; ui.fixCuts = null; ui.pins = {}; if (d.img === 'final') ui.finalPick = new Set(); render(); toast(c[2]);
     });
   }
   if (d.motionopen !== undefined) { ui.motionOpen = !ui.motionOpen; }
@@ -708,6 +726,7 @@ document.addEventListener('click', e => {
     if (d.vrange !== undefined) { const n = vNotesOf(w).map(x => ({ ...x })); const i = Number(d.vrange); const t = vp?.currentTime || 0; if (t > n[i].t) n[i].t2 = +t.toFixed(2); else toast('구간 끝은 시작보다 뒤여야 해요. 재생 위치를 옮긴 뒤 눌러 주세요.'); ui.vNotes = n; render(); saveVNotesSoon(w); return; }
     if (d.vdel !== undefined) { ui.vNotes = vNotesOf(w).filter((_, i) => i !== Number(d.vdel)); render(); saveVNotesSoon(w); return; }
     if (d.vid === 'addnote') { const t = vp?.currentTime || 0; const txt = $('#vnote').value.trim(); if (!txt) { $('#vnote').focus(); return; } ui.vNotes = [...vNotesOf(w), { t: +t.toFixed(2), t2: null, text: txt }].sort((a, b) => a.t - b.t); render(); saveVNotesSoon(w); toast(`${fmtT(t)} 지점에 메모를 남겼어요.`); return; }
+    if (d.vid === 'cutimages') return run(async () => { const r = await api(`/api/works/${w.id}/video-cut-images`, {}); S = r.state; render(); toast(`컷 이미지 작업을 만들고 Claude에게 구도 시안을 맡겼어요.`); });
     if (d.vid?.startsWith('fixopen-')) { ui.vFixOpen = d.vid.slice(8); render(); return; }
     if (d.vid === 'fixcancel') { ui.vFixOpen = null; render(); return; }
     const calls = {
@@ -748,6 +767,7 @@ document.addEventListener('input', e => {
   if (t.dataset.f && ui.edit) ui.edit.draft[t.dataset.f] = t.type === 'checkbox' ? t.checked : t.value;
   if (t.dataset.f && ui.edit?.key === 'brand.subtitle') { const draft = { ...ui.edit.draft }, k = JSON.stringify(draft); clearTimeout(ui.subPrevT); $('#subprev .subgrid')?.classList.add('loading'); ui.subPrevT = setTimeout(() => loadSubPrev(draft, k), 600); }
   if (t.id === 'ereason' && ui.edit) ui.edit.reason = t.value;
+  if (t.dataset.pnote) ui.pNotes = { ...(ui.pNotes || {}), [t.dataset.pnote]: t.value };
   if (t.id === 'ck-text') ui.check.text = t.value;
 });
 document.addEventListener('change', e => { const t = e.target;
@@ -757,6 +777,7 @@ document.addEventListener('change', e => { const t = e.target;
   if (t.dataset.final) { t.checked ? ui.finalPick.add(t.dataset.final) : ui.finalPick.delete(t.dataset.final); render(); }
   if (t.dataset.upscale) { ui.upscale = t.dataset.upscale; }
   if (t.dataset.subcolor) { ui.subColor = t.dataset.subcolor; render(); }
+  if (t.dataset.fixcut) { ui.fixCuts = ui.fixCuts || new Set(); t.checked ? ui.fixCuts.add(t.dataset.fixcut) : ui.fixCuts.delete(t.dataset.fixcut); }
   if (t.dataset.cutimg !== undefined) { const w = S.works.find(x => x.id === dropWork()); if (w) run(async () => { S = (await api(`/api/works/${w.id}/video-cut-image`, { cutId: t.dataset.cutimg, imageId: t.value })).state; render(); toast(t.value ? `${t.dataset.cutimg}에 ${t.value}를 넣었어요.` : `${t.dataset.cutimg}에서 이미지를 뺐어요.`); }); }
   if (t.dataset.version) { const w = S.works.find(x => x.id === dropWork()); const set = new Set(ui.versions || w.video.versions || [w.account]); t.checked ? set.add(t.dataset.version) : set.delete(t.dataset.version); set.add(w.account); ui.versions = [...set]; }
   if (t.id === 'subs-on') ui.subsOn = t.checked;

@@ -134,9 +134,9 @@ tool('list_queue', {
     '',
     '[레퍼런스 분석] get_reference로 이미지를 직접 보고 구도·빛·색감·소품·문구 위치를 한국어 3~5문장으로 정리해 submit_reference_analysis로 보낸다. 영상이나 볼 수 없는 링크는 볼 수 없다고 적고, 사용자에게 캡처를 부탁한다고 쓴다.',
     '',
-    '[구도 시안 만들기/고치기] 실제 생성 전에 크레딧 없이 보는 컴퓨터 스케치다. 기획 메모, request.note, 연결된 레퍼런스(references, part가 있으면 그 부분용), 브랜드 비주얼 기준을 보고, 4:5(1080x1350) 비율 viewBox의 단순한 SVG 2~3개를 만든다: 무채색 도형으로 제품 위치·크기, 모델/손 위치, 문구 자리, 소품, 빛 방향을 표시하고 한국어 라벨을 붙인다. 고치기는 latestFix.note를 반영한다. submit_drafts로 보낸다.',
+    '[구도 시안 만들기/고치기] 실제 생성 전에 크레딧 없이 보는 컴퓨터 스케치다. 요청 메모에 여러 컷(캐러셀, 스토리)이 있거나 image.cuts가 미리 정해져 있으면 submit_drafts의 cuts로 컷마다 시안을 보낸다(미리 정한 컷은 그 순서·설명을 따른다). 기획 메모, request.note, 연결된 레퍼런스(references, part가 있으면 그 부분용), 브랜드 비주얼 기준을 보고, 4:5(1080x1350) 비율 viewBox의 단순한 SVG 2~3개를 만든다: 무채색 도형으로 제품 위치·크기, 모델/손 위치, 문구 자리, 소품, 빛 방향을 표시하고 한국어 라벨을 붙인다. 고치기는 latestFix.note를 반영한다. submit_drafts로 보낸다.',
     '',
-    '[이미지 만들기/고치기] image.pickedDraft(고른 구도 SVG 파일과 메모)를 따른다. get_product로 그 제품의 기준 이미지(referenceImages)를 항상 참조 이미지로 쓰고, 모델이 나오면 get_image_folders의 realModels/aiModels 사진을 써서 얼굴을 유지한다. Higgsfield로 생성하기 전에 예상 크레딧을 사용자에게 먼저 알리고 확인을 받는다. 결과는 submit_images로 보낸다(주소 url 또는 Mac 파일 path). 고치기는 latestFix의 핀(x,y는 왼쪽 위 기준 %)과 메모를 반영하고, view_work_image로 지금 결과를 보고 고친다. 그림 속 문구는 그 계정 언어로 쓰고 check_text로 검사한다.',
+    '[이미지 만들기/고치기] image.pickedDraft(고른 구도 SVG 파일과 메모)를 따른다. 컷이 여러 개면 image.cuts의 컷마다 pickedDraft를 따라 컷마다 이미지를 만들고 같은 모델·조명·인물로 이어지게 한다(cut을 붙여 submit_images). 고치기는 latestFix.cuts의 컷만 다시 만든다. 해상도는 가능한 가장 높게(가로 1080px 이상, image.minWidth) 만들고 원본 주소를 보낸다. get_product로 그 제품의 기준 이미지(referenceImages)를 항상 참조 이미지로 쓰고, 모델이 나오면 get_image_folders의 realModels/aiModels 사진을 써서 얼굴을 유지한다. Higgsfield로 생성하기 전에 예상 크레딧을 사용자에게 먼저 알리고 확인을 받는다. 결과는 submit_images로 보낸다(주소 url 또는 Mac 파일 path). 고치기는 latestFix의 핀(x,y는 왼쪽 위 기준 %)과 메모를 반영하고, view_work_image로 지금 결과를 보고 고친다. 그림 속 문구는 그 계정 언어로 쓰고 check_text로 검사한다.',
     '',
     '[최종 이미지 업스케일] image.upscale.files의 이미지만 Higgsfield로 가로 1080px 이상으로 업스케일한다. 예상 크레딧을 먼저 알리고 확인을 받은 뒤 submit_upscaled로 보내면 프로그램이 바로 최종 저장까지 한다.',
     '',
@@ -210,22 +210,31 @@ tool('submit_reference_analysis', {
 
 tool('submit_drafts', {
   title: '구도 시안 보내기',
-  description: '이미지 작업의 구도 시안(SVG 스케치) 2~3개를 보낸다. viewBox는 4:5 비율(예: 0 0 1080 1350). 무채색 도형과 한국어 라벨만 쓰고, 사진이나 외부 링크는 넣지 않는다. 사용자가 하나를 고르면 그 구도로 이미지를 만든다.',
+  description: '이미지 작업의 구도 시안(SVG 스케치)을 보낸다. 한 장짜리는 drafts에 2~3개. 컷이 여러 개인 작업(캐러셀, 영상 컷 이미지, 요청 메모에 여러 컷이 있으면)은 cuts에 컷마다 title·desc와 시안 1~3개를 넣는다. 고칠 때는 latestFix.cuts에 있는 컷만 id(C2 등)를 붙여 보내면 나머지는 그대로 남는다. viewBox는 그 작업의 비율(피드 4:5는 0 0 1080 1350, 릴스·영상 컷은 9:16 0 0 1080 1920). 무채색 도형과 한국어 라벨만 쓰고, 사진이나 외부 링크는 넣지 않는다.',
   inputSchema: {
     work_id: z.string(),
-    drafts: z.array(z.object({ title: z.string().describe('예: 시안 A · 제품 정면 클로즈업'), note: z.string().describe('한국어 한두 문장: 구도 의도'), svg: z.string() })).min(1).max(4)
+    drafts: z.array(z.object({ title: z.string().describe('예: 시안 A · 제품 정면 클로즈업'), note: z.string().describe('한국어 한두 문장: 구도 의도'), svg: z.string() })).min(1).max(4).optional(),
+    cuts: z.array(z.object({ id: z.string().optional().describe('고칠 때만: C1, C2…'), title: z.string().describe('컷 이름 (예: 1 · 뚜껑 여는 손)'), desc: z.string().describe('한국어: 이 컷이 보여줄 것'), drafts: z.array(z.object({ title: z.string(), note: z.string(), svg: z.string() })).min(1).max(3) })).min(1).max(20).optional()
   }
-}, ({ work_id, drafts }) => { const w = submitDrafts(work_id, drafts); return `${w.id} 구도 시안 ${drafts.length}개를 보냈어요. 사용자가 고를 차례예요.`; });
+}, ({ work_id, drafts, cuts }) => {
+  if (!drafts && !cuts) throw new Error('drafts(한 장짜리) 또는 cuts(여러 컷) 중 하나를 보내 주세요.');
+  const w = submitDrafts(work_id, cuts ? { cuts } : drafts);
+  return cuts ? `${w.id} ${cuts.length}컷의 구도 시안을 보냈어요. 사용자가 컷마다 고를 차례예요.` : `${w.id} 구도 시안 ${drafts.length}개를 보냈어요. 사용자가 고를 차례예요.`;
+});
 
 tool('submit_images', {
   title: '만든 이미지 보내기',
-  description: 'Higgsfield 등으로 만든 이미지를 작업에 보낸다. 각 이미지는 내려받을 수 있는 주소(url) 또는 Mac의 파일 경로(path)로 준다. 사용한 프롬프트와 모델도 적는다. 보내면 사용자가 핀 메모로 검수한다.',
+  description: 'Higgsfield 등으로 만든 이미지를 작업에 보낸다. 각 이미지는 내려받을 수 있는 원본 주소(url, 미리보기·썸네일 주소 말고) 또는 Mac의 파일 경로(path). 가로 1080px 이상이어야 인스타그램에서 선명하다(Higgsfield는 가능한 가장 높은 해상도로 생성). 컷이 여러 개인 작업은 이미지마다 cut(C1, C2…)을 넣고, 고칠 때는 고친 컷만 보내면 나머지 컷은 그대로 남는다. 사용한 프롬프트와 모델도 적는다.',
   inputSchema: {
     work_id: z.string(),
-    images: z.array(z.object({ url: z.string().optional(), path: z.string().optional(), prompt: z.string().optional(), model: z.string().optional() })).min(1).max(8),
+    images: z.array(z.object({ url: z.string().optional(), path: z.string().optional(), cut: z.string().optional(), prompt: z.string().optional(), model: z.string().optional() })).min(1).max(40),
     note: z.string().optional().describe('사용자에게 남길 한국어 한 줄 (예: 사용한 크레딧, 바꾼 점)')
   }
-}, async ({ work_id, images, note }) => { const w = await submitImages(work_id, images, note); return `${w.id} 이미지 ${images.length}장을 보냈어요. 사용자가 검수할 차례예요.`; });
+}, async ({ work_id, images, note }) => {
+  const w = await submitImages(work_id, images, note);
+  const low = w.image.results.filter(r => r.lowRes);
+  return `${w.id} 이미지 ${images.length}장을 보냈어요. 사용자가 검수할 차례예요.${low.length ? `\n주의: ${low.map(r => `${r.id} ${r.width}×${r.height}`).join(', ')}는 가로 1080px보다 작아서 인스타그램에서 흐리게 보여요. 원본 주소를 보냈는지 확인하고, 가능하면 더 높은 해상도로 다시 받아 보내 주세요.` : ''}`;
+});
 
 tool('view_work_image', {
   title: '작업 이미지 보기',

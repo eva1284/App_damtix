@@ -337,3 +337,10 @@ details.inci p{font-size:12px;color:var(--muted);margin:0}
 .stills figure{flex:none;width:132px;scroll-snap-align:start}
 .stills img{width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:8px;display:block;background:var(--fill)}
 .stills figcaption{margin-top:4px;font-size:12px;text-align:center}
+
+/* 여러 컷 이미지 */
+.cutlist{display:flex;flex-direction:column;gap:16px}
+.cutbox{border:1px solid var(--line);border-radius:11px;padding:12px}
+.cuth{display:flex;align-items:center;gap:8px;margin:0 0 8px;flex-wrap:wrap}
+.cutbox input[type=text]{width:100%}
+.cutbox .drafts{grid-template-columns:repeat(auto-fill,minmax(140px,180px))}
